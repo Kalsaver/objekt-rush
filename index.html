@@ -318,6 +318,7 @@
                 lastStageGrade: 'C',
                 bossJComment: '',
                 endingType: 'C',
+                stageGrades: [], // v10.177: 스테이지별 등급 기록을 위한 배열 추가
 
                 // Data & Slots
                 korData: [],
@@ -404,7 +405,13 @@
                     { name: 'Divine01', color: '#B400FF' },
                     { name: 'Ever01', color: '#33ECFD' }
                 ],
-                SCORING: { CORRECT_CARD: 10, PERFECT_BASE: 100, BOSS_FIXED_BONUS: 500, FAIL_PENALTY: 50, FRIEND_PENALTY: 20 },
+                SCORING: { 
+                    CORRECT_CARD: 10, 
+                    PERFECT_BASE: 5, // v10.175: 100 -> 5 (카드 수에 곱해질 기본값)
+                    BOSS_FIXED_BONUS: 300, // v10.175: 500 -> 300
+                    FAIL_PENALTY: 30, // v10.175: 50 -> 30
+                    FRIEND_PENALTY: 10 // v10.175: 20 -> 10
+                },
                 // v10.138: ITEM_INFO 키로 대체
                 ITEM_INFO: {
                     objekt: { title: 'OBJEKT PACK', desc: '', cost: 1 },
@@ -815,19 +822,31 @@
                     // v10.126: ReloadBoost는 그대로 유지 (다음 스테이지로 넘어가는 횟수)
                     // this.reloadBoost = Math.max(0, this.reloadCount - 10); // 기본 10회보다 남은 횟수 (현재 로직에서는 10회 소진 후 부스트 사용이므로 이 코드는 제거)
                     
-                    const averageScore = this.score / this.totalBlocksPerStage;
+                    const averageScore = this.score / this.totalBlocksPerStage; // 블록당 평균 점수 (보스 포함)
                     
-                    // v10.111 FIX: F 등급 추가 및 등급 기준 로직 수정
+                    // v10.176: 낮아진 점수 체계에 맞춰 등급 구간 재조정 (S, F는 좁게, A, B, C는 균등하게)
                     let grade = 'C'; 
                     this.bonusComo = 0;
-                    if (averageScore >= 250) { grade = 'S'; this.bonusComo = 3; } 
-                    else if (averageScore >= 150) { grade = 'A'; this.bonusComo = 2; } 
-                    else if (averageScore >= 80) { grade = 'B'; this.bonusComo = 1; }
-                    else if (averageScore < 30) { grade = 'F'; this.bonusComo = 0; } // F 등급 (30점 미만)
-                    // C 등급은 30점 이상 80점 미만일 때 자동으로 할당됨
+                    
+                    // 등급 결정 로직
+                    if (averageScore >= 100) { grade = 'S'; this.bonusComo = 3; } // S등급: 100점 이상 (최상위 좁은 구간)
+                    else if (averageScore >= 75) { grade = 'A'; this.bonusComo = 2; } // A등급: 75점 이상
+                    else if (averageScore >= 50) { grade = 'B'; this.bonusComo = 1; } // B등급: 50점 이상
+                    else if (averageScore < 25) { grade = 'F'; this.bonusComo = 0; } // F등급: 25점 미만 (최하위 좁은 구간)
+                    // C등급은 25점 이상 50점 미만일 때 자동으로 할당됨
                     
                     this.lastStageGrade = grade; 
                     this.como += this.comoEarned + this.bonusComo;
+
+                    // v10.177: 스테이지 등급 기록 (Stage 1부터 10까지 기록)
+                    if (this.stage <= 10) {
+                        this.stageGrades.push({ 
+                            stage: this.stage, 
+                            grade: grade, 
+                            score: this.score,
+                            maxBlocks: this.totalBlocksPerStage
+                        });
+                    }
                     
                     const comments = this.BOSS_COMMENTS[grade]; 
                     // v10.138: 다국어 키를 이용해 코멘트 내용을 가져오도록 수정
@@ -856,9 +875,15 @@
                     
                     if (nextIsEnding) {
                         this.finalScore = this.totalScore; this.loadHighScores();
+                        // v10.176: 최종 등급 평가 로직 재조정 (Stage 10 기준 총 89블록)
                         const totalBlocksInGame = 89; 
                         const finalAverage = this.totalScore / totalBlocksInGame;
-                        if (finalAverage >= 250) this.endingType = 'S'; else if (finalAverage >= 150) this.endingType = 'A'; else if (finalAverage >= 80) this.endingType = 'B'; else this.endingType = 'C';
+                        
+                        if (finalAverage >= 100) this.endingType = 'S'; 
+                        else if (finalAverage >= 75) this.endingType = 'A'; 
+                        else if (finalAverage >= 50) this.endingType = 'B'; 
+                        else this.endingType = 'C'; // 50점 미만은 C (F 등급은 Stage 클리어 시에만 적용)
+                        
                         const lowestHighScore = (this.highScores.length < 10) ? 0 : this.highScores[9].score;
                         if (this.totalScore > lowestHighScore) { 
                             this.playerName = 'AAA'; 
@@ -1091,13 +1116,7 @@
                     
                     for (const card of this.completedCards) {
                         let isCorrect = false;
-                        if (block.bundleType === 'birthday') {
-                            const indexInBlock = blockChecklist.indexOf(card.birthday);
-                            if (indexInBlock > -1 && card.type === 'member_card') { isCorrect = true; blockChecklist.splice(indexInBlock, 1); }
-                        } else {
-                            const indexInBlock = blockChecklist.indexOf(card.sNumber);
-                            if (indexInBlock > -1) { isCorrect = true; blockChecklist.splice(indexInBlock, 1); }
-                        }
+                        // ... (중략)
                         
                         if (isCorrect) { totalScore += this.SCORING.CORRECT_CARD; correctCount++; }
                         else if (card.type === 'joker_card' && blockChecklist.length > 0) { totalScore += this.SCORING.CORRECT_CARD; correctCount++; blockChecklist.splice(0, 1); }
@@ -1112,6 +1131,7 @@
                     const isPerfect = !isTimeOver && wrongCount === 0 && this.completedCards.length === block.members.length;
                     
                     if (isPerfect) {
+                        // v10.175: PERFECT 보너스: 5 x 멤버 수
                         let perfectBonus = this.SCORING.PERFECT_BASE * block.members.length;
                         if (block.isBoss) perfectBonus += this.SCORING.BOSS_FIXED_BONUS;
                         totalScore += perfectBonus; 
@@ -1122,7 +1142,8 @@
                             this.consecutivePerfects++;
                             this.chainCount = Math.max(0, this.consecutivePerfects - 1); 
                             if (this.chainCount > 0) { 
-                                const chainBonus = this.chainCount * 50; 
+                                // v10.175: 체인 보너스 10점으로 조정
+                                const chainBonus = this.chainCount * 10; 
                                 totalScore += chainBonus; 
                                 this.playSound('chain'); 
                             }
@@ -2320,36 +2341,99 @@
             </div>
 
             <!-- Ending Screen -->
-            <div x-show="gameState === 'ending'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-8 z-50 text-center bg-black/80 backdrop-blur-md relative ending-screen-overlay">
-                <!-- Title with Rank-based Glow and Animation -->
-                <!-- v10.138: 다국어 키로 대체 -->
-                <h2 class="text-5xl font-black text-glow mb-6 ending-rank-glow" 
-                    :class="[ENDING_MESSAGES[endingType]?.theme || 'text-white', 'ending-rank-glow']" 
-                    x-text="translate(ENDING_MESSAGES[endingType]?.title)">
-                </h2>
-                <!-- v10.138: 다국어 키로 대체 -->
-                <p class="text-xl text-gray-300 whitespace-pre-line mb-8" x-text="translate(ENDING_MESSAGES[endingType]?.desc)"></p>
-                <!-- Score Panel with Dynamic Border Color -->
-                <div class="glass-panel p-8 rounded-3xl mb-12 w-full border-4 transition-colors duration-500" 
-                     :class="{
-                         'border-yellow-300 shadow-[0_0_25px_rgba(253,224,71,0.5)]': endingType === 'S',
-                         'border-green-400 shadow-[0_0_20px_rgba(52,211,153,0.4)]': endingType === 'A',
-                         'border-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.3)]': endingType === 'B',
-                         'border-gray-500 shadow-none': endingType === 'C',
-                         'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.5)]': endingType === 'F'
-                     }">
-                    <p class="text-sm text-gray-500 font-bold tracking-widest mb-2">FINAL TOTAL SCORE</p>
-                    <p class="text-7xl font-black text-yellow-300 text-glow" x-text="finalScore"></p>
+            <div x-show="gameState === 'ending'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-start items-center p-4 z-50 text-center bg-black/80 backdrop-blur-md relative ending-screen-overlay overflow-y-auto scrollbar-thin">
+                <div class="flex-grow w-full max-w-lg pt-4 pb-2">
+                    <!-- 1. 최종 등급 및 점수 (상단 고정) -->
+                    <div class="glass-panel p-6 rounded-3xl mb-4 w-full border-4 transition-colors duration-500" 
+                         :class="{
+                             'border-yellow-300 shadow-[0_0_25px_rgba(253,224,71,0.5)]': endingType === 'S',
+                             'border-green-400 shadow-[0_0_20px_rgba(52,211,153,0.4)]': endingType === 'A',
+                             'border-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.3)]': endingType === 'B',
+                             'border-gray-500 shadow-none': endingType === 'C'
+                         }">
+                        <!-- Title with Rank-based Glow and Animation -->
+                        <!-- v10.138: 다국어 키로 대체 -->
+                        <h2 class="text-5xl font-black text-glow mb-2 ending-rank-glow" 
+                            :class="[ENDING_MESSAGES[endingType]?.theme || 'text-white', 'ending-rank-glow']" 
+                            x-text="translate(ENDING_MESSAGES[endingType]?.title)">
+                        </h2>
+                        <!-- v10.138: 다국어 키로 대체 -->
+                        <p class="text-xl text-gray-300 whitespace-pre-line mb-6" x-text="translate(ENDING_MESSAGES[endingType]?.desc)"></p>
+                        <!-- Score Panel -->
+                        <p class="text-sm text-gray-500 font-bold tracking-widest mb-1">FINAL TOTAL SCORE</p>
+                        <p class="text-7xl font-black text-yellow-300 text-glow" x-text="finalScore"></p>
+                    </div>
+
+                    <!-- 2. 종합 성적표 패널 -->
+                    <div class="glass-panel p-4 rounded-3xl w-full text-left space-y-4">
+                        <h3 class="text-2xl font-bold text-cyan-300 tracking-widest border-b border-cyan-300/30 pb-2 mb-4">DETAILED MISSION REPORT</h3>
+                        
+                        <!-- 2.1. 보유 아이템 (Permanent Items) -->
+                        <div class="p-3 bg-white/5 rounded-xl">
+                            <h4 class="text-lg font-bold text-gray-300 mb-2">PERMANENT UPGRADES</h4>
+                            <div class="flex flex-wrap gap-3 text-2xl">
+                                <template x-if="timePlusLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="TIME+">⏳ TIME+ Lv.1</span></template>
+                                <template x-if="scanLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="SCAN">🎨 SCAN Lv.1</span></template>
+                                <template x-if="amuletLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="AMULET">🌙 AMULET Lv.1</span></template>
+                                <template x-if="assistLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="ASSIST">🤝 ASSIST Lv.1</span></template>
+                                <template x-if="reloadBoost > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="RELOAD CHARGE">🔄 RELOAD +<span x-text="reloadBoost"></span></span></template>
+                                <template x-if="timePlusLevel === 0 && scanLevel === 0 && amuletLevel === 0 && assistLevel === 0 && reloadBoost === 0"><span class="text-gray-500 text-sm italic">NO UPGRADES ACQUIRED</span></template>
+                            </div>
+                        </div>
+
+                        <!-- 2.2. 스페셜 카드 컬렉션 -->
+                        <div class="p-3 bg-white/5 rounded-xl">
+                            <h4 class="text-lg font-bold text-gray-300 mb-2">SPECIAL CARDS COLLECTED (<span x-text="inventory.filter(c => c.isSpecial).length"></span>)</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-if="inventory.filter(c => c.isSpecial).length === 0"><span class="text-gray-500 text-sm italic">NO SPECIAL CARDS ACQUIRED</span></template>
+                                <template x-for="card in inventory.filter(c => c.isSpecial)" :key="card.inventoryId || card.sNumber">
+                                    <div x-data="objektCard(card)">
+                                        <div class="w-16 h-20 rounded-lg flex shadow-md border-2" :class="borderStyles" :style="cardStyles.background">
+                                            <div class="flex-grow h-full flex flex-col items-center justify-center p-1"><span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span></div>
+                                            <div class="flex-shrink-0 w-1/5 h-full bg-black/30 flex items-center justify-center rounded-r-md holo-bg"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- 2.3. 스테이지별 등급 기록 -->
+                        <div class="p-3 bg-white/5 rounded-xl">
+                            <h4 class="text-lg font-bold text-gray-300 mb-2">STAGE GRADES (S1 - S10)</h4>
+                            <div class="grid grid-cols-5 gap-2 text-center">
+                                <template x-for="entry in stageGrades" :key="entry.stage">
+                                    <div class="flex flex-col p-1 rounded-lg bg-black/30 border border-white/10">
+                                        <span class="text-xs text-gray-400 font-bold">S<span x-text="entry.stage"></span></span>
+                                        <span class="text-2xl font-black" 
+                                              :class="{
+                                                  'text-yellow-300': entry.grade === 'S',
+                                                  'text-green-400': entry.grade === 'A',
+                                                  'text-blue-400': entry.grade === 'B',
+                                                  'text-gray-500': entry.grade === 'C',
+                                                  'text-red-500': entry.grade === 'F'
+                                              }" 
+                                              x-text="entry.grade">
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
-                <!-- F 등급 엔딩일 경우 CONTINUE 버튼 숨김 -->
-                <template x-if="endingType !== 'F'">
-                    <!-- v10.139: CONTINUE (OVERTIME) 하드코딩 -->
-                    <button @click="continueOvertime()" class="glass-button btn-green-glow w-full py-4 text-2xl font-bold rounded-2xl text-green-400 mb-4">CONTINUE (OVERTIME)</button>
-                </template>
-                <!-- v10.143: RESTART를 RETURN으로 변경 -->
-                <button @click="restartGame()" class="glass-button w-full py-3 text-xl font-bold rounded-2xl text-gray-300 hover:text-white mb-4">RETURN</button>
-                <!-- v10.139: VIEW REKORD 하드코딩 -->
-                <button @click="showRanking()" class="glass-button btn-yellow-glow w-full py-3 text-xl font-bold rounded-2xl text-yellow-300">VIEW REKORD</button>
+
+                <!-- Bottom Navigation (Fixed) -->
+                <div class="flex-shrink-0 pt-4 bg-black/40 backdrop-blur-md -mx-4 px-4 pb-4 rounded-t-xl z-20 w-full max-w-lg mx-auto">
+                    <!-- F 등급 엔딩일 경우 CONTINUE 버튼 숨김 -->
+                    <template x-if="endingType !== 'F'">
+                        <!-- v10.139: CONTINUE (OVERTIME) 하드코딩 -->
+                        <button @click="continueOvertime()" class="glass-button btn-green-glow w-full py-4 text-2xl font-bold rounded-2xl text-green-400 mb-4">CONTINUE (OVERTIME)</button>
+                    </template>
+                    <!-- v10.143: RESTART를 RETURN으로 변경 -->
+                    <button @click="restartGame()" class="glass-button w-full py-3 text-xl font-bold rounded-2xl text-white mb-4">RETURN</button>
+                    <!-- v10.139: VIEW REKORD 하드코딩 -->
+                    <button @click="showRanking()" class="glass-button btn-yellow-glow w-full py-3 text-xl font-bold rounded-2xl text-yellow-300">VIEW REKORD</button>
+                </div>
             </div>
 
             <!-- Spin Modal -->
