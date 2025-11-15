@@ -1326,7 +1326,7 @@
                     // 횟수가 없을 때 페널티 적용
                     else {
                         this.score = Math.max(0, this.score - this.currentReloadPenalty);
-                        this.showFeedback('Score Penalty -${this.currentReloadPenalty}', 'incorrect');
+                        this.showFeedback('SCORE -' + this.currentReloadPenalty, 'incorrect');
                         this.currentReloadPenalty = Math.min(30, this.currentReloadPenalty + 5);
                     }
 
