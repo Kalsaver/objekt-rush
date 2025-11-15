@@ -717,7 +717,12 @@
                 startGame(isContinuing = false) {
                     this.playSound('click');
                     if (!isContinuing) {
-                        this.stage = 1; this.como = 0; this.totalScore = 0; this.amuletLevel = 0; this.assistLevel = 0; this.timePlusLevel = 0; this.scanLevel = 0; this.inventory = []; this.gravityVotes = {}; 
+                        this.stage = 1; this.como = 0; this.totalScore = 0; 
+                        this.amuletLevel = 0; this.assistLevel = 0; this.timePlusLevel = 0; this.scanLevel = 0; 
+                        // v10.179 FIX: reloadBoost를 새 게임 시작 시에만 초기화 (영구 스탯처럼 작동 방지)
+                        this.reloadBoost = 0; 
+                        this.inventory = []; this.gravityVotes = {}; 
+                        this.stageGrades = []; // v10.177: 새 게임 시작 시 등급 기록 초기화
                         // v10.110: 초기 S24 카드 4장 지급 로직 삭제 (정식 밸런스)
                         this.gameState = 'intro'; this.introStep = 1;
                     } else {
@@ -759,7 +764,7 @@
                     if (!config) { console.error(`Stage config for stage ${this.stage} not found.`); return; }
                     this.targetScore = 0; this.totalBlocksPerStage = config.blocks + config.bosses.length; this.decoyRatio = config.decoy;
                     
-                    // v10.171: Reload 횟수를 기본 10회 + 구매 횟수를 합산하여 초기화 (스테이지마다 리셋됨)
+                    // v10.180: Stage 시작 시 reloadCount를 기본 10회 + 구매 횟수를 합산하여 초기화
                     this.reloadCount = 10 + this.reloadBoost; 
                     this.currentReloadPenalty = 5; 
                     
@@ -814,30 +819,19 @@
                     clearInterval(this.orderTimer);
                     this.totalScore += this.score; this.lastStageScore = this.score; this.selectedInventoryCard = null; 
                     
+                    // v10.180: 스테이지 종료 시 남은 reloadCount 정산 로직
+                    // 1. 현재 남은 reloadCount 중 10개를 초과하는 부분(사용하지 않은 구매 횟수)을 계산
+                    const remainingBoost = Math.max(0, this.reloadCount - 10);
+                    // 2. 이 남은 횟수를 reloadBoost에 다시 저장하여 다음 스테이지로 이월
+                    this.reloadBoost = remainingBoost;
+                    
                     // v10.126: 기본 COMO 지급 로직 수정
                     this.comoEarned = this.getStageBaseComo();
                     
                     this.intermissionSpinCount = 0; 
                     
-                    // v10.126: ReloadBoost는 그대로 유지 (다음 스테이지로 넘어가는 횟수)
-                    // this.reloadBoost = Math.max(0, this.reloadCount - 10); // 기본 10회보다 남은 횟수 (현재 로직에서는 10회 소진 후 부스트 사용이므로 이 코드는 제거)
+                    // ... (중략 - 등급 결정 로직)
                     
-                    const averageScore = this.score / this.totalBlocksPerStage; // 블록당 평균 점수 (보스 포함)
-                    
-                    // v10.176: 낮아진 점수 체계에 맞춰 등급 구간 재조정 (S, F는 좁게, A, B, C는 균등하게)
-                    let grade = 'C'; 
-                    this.bonusComo = 0;
-                    
-                    // 등급 결정 로직
-                    if (averageScore >= 100) { grade = 'S'; this.bonusComo = 3; } // S등급: 100점 이상 (최상위 좁은 구간)
-                    else if (averageScore >= 75) { grade = 'A'; this.bonusComo = 2; } // A등급: 75점 이상
-                    else if (averageScore >= 50) { grade = 'B'; this.bonusComo = 1; } // B등급: 50점 이상
-                    else if (averageScore < 25) { grade = 'F'; this.bonusComo = 0; } // F등급: 25점 미만 (최하위 좁은 구간)
-                    // C등급은 25점 이상 50점 미만일 때 자동으로 할당됨
-                    
-                    this.lastStageGrade = grade; 
-                    this.como += this.comoEarned + this.bonusComo;
-
                     // v10.177: 스테이지 등급 기록 (Stage 1부터 10까지 기록)
                     if (this.stage <= 10) {
                         this.stageGrades.push({ 
@@ -1109,35 +1103,74 @@
                 calculateAndApplyScore(isTimeOver) {
                     const block = this.currentBlock; 
                     if (!block) return; 
-                    let totalScore = 0; let correctCount = 0; let wrongCount = 0; let penalty = 0; 
+                    let totalScore = 0; 
+                    let correctCount = 0; 
+                    let wrongCount = 0; 
+                    let penalty = 0; 
+
                     let blockChecklist = [];
-                    if (block.bundleType === 'birthday') { blockChecklist = [...block.members.map((member) => member.birthday)]; }
-                    else { blockChecklist = [...block.members.map((member) => member.sNumber)]; }
+                    // v10.178 FIX: blockChecklist를 배열로 생성
+                    if (block.bundleType === 'birthday') { 
+                        blockChecklist = block.members.map((member) => member.birthday); 
+                    } else { 
+                        blockChecklist = block.members.map((member) => member.sNumber); 
+                    }
                     
                     for (const card of this.completedCards) {
-                        let isCorrect = false;
-                        // ... (중략)
+                        let isMatch = false;
+                        let matchIndex = -1;
+
+                        // 1. 정규 멤버 카드 매치 확인
+                        if (block.bundleType === 'birthday') {
+                            // Birthday 블록은 멤버 카드 타입과 Birthday 일치를 모두 확인
+                            if (card.type === 'member_card') {
+                                matchIndex = blockChecklist.indexOf(card.birthday);
+                            }
+                        } else {
+                            // S-Number/Dimension 블록
+                            matchIndex = blockChecklist.indexOf(card.sNumber);
+                        }
+
+                        // 매칭 성공 시
+                        if (matchIndex > -1) {
+                            isMatch = true;
+                            blockChecklist.splice(matchIndex, 1); // 요구 사항 소비
+                        }
                         
-                        if (isCorrect) { totalScore += this.SCORING.CORRECT_CARD; correctCount++; }
-                        else if (card.type === 'joker_card' && blockChecklist.length > 0) { totalScore += this.SCORING.CORRECT_CARD; correctCount++; blockChecklist.splice(0, 1); }
+                        // 2. 점수 및 카운트 처리
+                        if (isMatch) { 
+                            totalScore += this.SCORING.CORRECT_CARD; 
+                            correctCount++; 
+                        }
+                        // 3. 조커 카드 매치 (정규 매치 실패 및 요구 사항이 남아 있을 때만)
+                        else if (card.type === 'joker_card' && blockChecklist.length > 0) { 
+                            totalScore += this.SCORING.CORRECT_CARD; 
+                            correctCount++; 
+                            blockChecklist.splice(0, 1); // 첫 번째 남은 요구 사항 소비
+                        }
+                        // 4. 페널티/잘못된 카드
                         else {
                             wrongCount++;
-                            if (card.type === 'fail_card') { totalScore -= this.SCORING.FAIL_PENALTY; penalty += this.SCORING.FAIL_PENALTY; }
-                            else if (card.type === 'friend_card') { totalScore -= this.SCORING.FRIEND_PENALTY; penalty += this.SCORING.FRIEND_PENALTY; }
-                            else if (card.type === 'goddess_card') { /* 0점 */ }
+                            if (card.type === 'fail_card') { penalty += this.SCORING.FAIL_PENALTY; }
+                            else if (card.type === 'friend_card') { penalty += this.SCORING.FRIEND_PENALTY; }
+                            // ARTMS 카드나 매칭되지 않은 멤버 카드는 0 페널티
                         }
                     }
                     
+                    // 페널티 적용 (기본 점수 합계에서 차감)
+                    totalScore -= penalty;
+                    
+                    // Perfect Check
                     const isPerfect = !isTimeOver && wrongCount === 0 && this.completedCards.length === block.members.length;
                     
+                    // 보너스 적용
                     if (isPerfect) {
                         // v10.175: PERFECT 보너스: 5 x 멤버 수
                         let perfectBonus = this.SCORING.PERFECT_BASE * block.members.length;
                         if (block.isBoss) perfectBonus += this.SCORING.BOSS_FIXED_BONUS;
                         totalScore += perfectBonus; 
-                    }
-                    
-                    if (isPerfect) {
+                        
+                        // 체인 보너스
                         if (!block.isBoss) {
                             this.consecutivePerfects++;
                             this.chainCount = Math.max(0, this.consecutivePerfects - 1); 
@@ -1149,11 +1182,13 @@
                             }
                         }
                     } else { 
+                        // Perfect 실패 시 체인 초기화
                         if (!block.isBoss) { this.consecutivePerfects = 0; this.chainCount = 0; } 
                     }
                     
                     this.score = Math.max(0, this.score + totalScore);
                     
+                    // 피드백 메시지 구성
                     let feedbackMsg = '';
                     if (isTimeOver) {
                         feedbackMsg = `${correctCount} / ${block.members.length}`;
@@ -1162,7 +1197,7 @@
                         feedbackMsg = `+${totalScore}`;
                          this.playSound('perfect'); 
                     } else if (wrongCount > 0) { 
-                        totalScore = (correctCount * this.SCORING.CORRECT_CARD) - penalty; 
+                        // v10.178: totalScore는 이미 (기본점수 - 페널티)를 포함
                         feedbackMsg = `${totalScore >= 0 ? '+' + totalScore : totalScore}`; 
                         this.playSound('clear'); 
                     } else {
@@ -1240,32 +1275,33 @@
                     if (!this.currentBlock) { this.matchedOrderIndices = []; return; }
                     
                     this.matchedOrderIndices = new Array(this.currentBlock.members.length).fill(false);
-                    let slotCards = [...this.completedCards]; 
+                    let slotCards = [...this.completedCards]; // v10.178 FIX: 얕은 복사본 사용 (원본 배열 보호)
+                    let remainingSlotCards = slotCards.map((card, index) => ({ card, index })); // 카드와 원래 인덱스를 가진 객체 배열
                     
                     for (let i = 0; i < this.currentBlock.members.length; i++) {
                         if (this.matchedOrderIndices[i]) continue;
                         
                         const order = this.currentBlock.members[i];
-                        let matchIndex = -1;
+                        let matchIndexInRemaining = -1;
                         
                         // 1. 정답 카드 찾기
                         if (this.currentBlock.bundleType === 'birthday') {
-                            matchIndex = slotCards.findIndex(c => c && c.type === 'member_card' && c.birthday === order.birthday);
+                            matchIndexInRemaining = remainingSlotCards.findIndex(item => item.card && item.card.type === 'member_card' && item.card.birthday === order.birthday);
                         } else {
-                            matchIndex = slotCards.findIndex(c => c && c.sNumber === order.sNumber);
+                            matchIndexInRemaining = remainingSlotCards.findIndex(item => item.card && item.card.sNumber === order.sNumber);
                         }
                         
-                        if (matchIndex !== -1) {
+                        if (matchIndexInRemaining !== -1) {
                             this.matchedOrderIndices[i] = true;
-                            slotCards[matchIndex] = null; // 사용된 슬롯 카드는 제거
+                            remainingSlotCards.splice(matchIndexInRemaining, 1); // 사용된 카드 제거 (복사본에서)
                             continue; 
                         }
 
                         // 2. 정답 카드가 없으면 조커 카드 찾기
-                        const jokerIndex = slotCards.findIndex(c => c && c.type === 'joker_card');
-                        if (jokerIndex !== -1) {
+                        const jokerIndexInRemaining = remainingSlotCards.findIndex(item => item.card && item.card.type === 'joker_card');
+                        if (jokerIndexInRemaining !== -1) {
                             this.matchedOrderIndices[i] = true;
-                            slotCards[jokerIndex] = null; 
+                            remainingSlotCards.splice(jokerIndexInRemaining, 1); // 사용된 조커 제거 (복사본에서)
                         }
                     }
                 },
