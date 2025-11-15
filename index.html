@@ -491,7 +491,7 @@
                 // v10.138: 언어 설정 로드
                 loadLanguage() {
                     const savedLang = localStorage.getItem('objektRushLanguage');
-                    const defaultLang = this.supportedLangs.find(l => l.code === 'ko');
+                    const defaultLang = this.supportedLangs.find(l => l.code === 'en');
                     if (savedLang && this.supportedLangs.some(l => l.code === savedLang)) {
                         this.currentLang = savedLang;
                     } else if (defaultLang) {
