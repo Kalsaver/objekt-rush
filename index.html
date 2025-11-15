@@ -250,125 +250,6 @@
 
     </style>
     <script>
-        // v10.138: 다국어 텍스트 정의
-        // v10.139: 핵심 UI는 제거하고 문장형/동적 텍스트만 유지
-        const GAME_TEXTS = {
-            ko: {
-                lang_select: "언어 선택", lang_desc: "게임 내 텍스트 표시 언어를 설정합니다.",
-                
-                // Intro Script
-                intro_line_0: "MH에 온 걸 환영하네, 신입.\n자네 임무는 다음과 같다.",
-                intro_line_1_a: "작업 지시(Order)에 맞는 올바른 Objekt를 제작하여 고객(Client)에게 전달할 것.",
-                intro_line_1_b: "하단의 데이터(Data)를 정확히 짝지어 슬롯(Slot)에 입력(Input)할 것.",
-                intro_line_1_c: "모든 주문 블록(Order Block) 처리에는 마감 기한이 있다는 걸 명심하게.",
-                intro_line_1_d: "본격적인 투입 전, 다음 장의 기밀 데이터를 완벽히 숙지하도록.",
-                intro_line_prompt: "...실수는 용납하지 않네. 할 수 있겠나?",
-
-                // Item Descriptions
-                item_reload_desc: '다음 스테이지의 RELOAD 횟수를 1회 추가합니다.\n(최대 +20회)',
-                item_timePlus_desc: '블록의 제한 시간을 2초 늘려줍니다.\n(최대 1레벨)',
-                item_scan_desc: '생일 블록에 멤버 색상 힌트를 표시합니다.\n(최대 1레벨)',
-                item_amulet_desc: '불량/친구 카드 입력 시 20% 확률로 ARTMS 카드로 변경됩니다.\n(최대 1레벨)',
-                item_assist_desc: 'Data 풀에 친구 카드가 20% 확률로 등장합니다.\n(최대 1레벨)',
-                
-                // Boss Comments
-                boss_S_0: "자네, 꽤 하는군. 이 정도는 해야 내 파트너가 될 수 있지.", boss_S_1: "완벽한 작업이었네. S는 아무나 받는게 아니야.", boss_S_2: "흠... 이 정도면 만족스럽군. 다음에도 부탁하지.",
-                boss_A_0: "A... 나쁘지 않아. 하지만 S를 노리도록.", boss_A_1: "훌륭하군. 하지만 방심은 금물이야.", boss_A_2: "잘했네. 이 감각을 잊지 말게.",
-                boss_B_0: "B... 평균은 했군. 분발하게.", boss_B_1: "아직 부족한 점이 보이는군. 더 노력하게.", boss_B_2: "이봐, 신입. 다음엔 오늘보다 나은 모습을 보여주게.",
-                boss_C_0: "C? ...내일 면담일세.", boss_C_1: "...이게 자네 최선인가?", boss_C_2: "신입. 내일은 오늘보다 나은 모습을 보여주게.",
-                boss_F_0: "계약 만료. 실적 미달로 인한 보안 접근 권한 회수. 즉시 관리 본부 복귀를 명령합니다.", boss_F_1: "경고: 임무 실패. 다음 스테이지 진행은 시스템에 의해 보류 처리되었습니다.", boss_F_2: "미흡한 실적으로 계약이 종료되었습니다. 추가 임무 배정은 없습니다.",
-
-                // Ending Messages
-                ending_S_title: "PERFECT AGENT", ending_S_desc: "모든 것을 완벽하게 해냈습니다!\n당신은 MH의 S급 요원입니다.",
-                ending_A_title: "ELITE AGENT", ending_A_desc: "훌륭한 성과입니다.\n당신은 MH의 엘리트 요원입니다.",
-                ending_B_title: "GOOD AGENT", ending_B_desc: "무사히 임무를 완수했습니다.\n다음엔 더 좋은 성과를 기대합니다.",
-                ending_C_title: "AGENT", ending_C_desc: "임무를 완수했습니다.\n...하지만 보스는 만족하지 않은 것 같군요.",
-                ending_F_title: "TERMINATED", ending_F_desc: "최소 요구 실적 미달로 계약이 해지되었습니다.",
-                
-                // Gravity Panel
-                gravity_desc_prefix: 'COMO를 투표하여',
-                gravity_desc_stage: 'Stage',
-                gravity_desc_suffix: '무대에 오를 Dimension을 결정하세요!',
-                
-                // Dynamic Feedback / Modals / System
-                feedback_collect_full: '인벤토리가 가득 찼습니다!',
-                feedback_not_enough_como: 'COMO가 부족합니다!', 
-                feedback_amulet_activated: '✨ AMULET 발동! ✨', 
-                feedback_joker_acquired: '✨ JOKER(MH) 획득! ✨',
-                feedback_card_acquired: ' 카드 획득!', 
-                feedback_grid_available: ' GRID 가능!', 
-                feedback_grid_complete: '✨ GRID 완료!',
-                feedback_need_four_cards: '동일한 일반 카드가 4장 이상 필요합니다!', 
-                feedback_spin_failed: 'SPIN 실패... 카드를 잃었습니다!', 
-                feedback_reload_penalty: '점수 감소',
-
-                // Confirm Modal
-                confirm_return_title: '⚠️ WARNING', confirm_return_msg: '현재 진행 상황이 모두 초기화됩니다.\n타이틀로 돌아가시겠습니까?',
-                
-                // Playing Screen
-                playing_next_block_boss: 'WARNING: Dimension 감지 중...',
-                playing_next_block_normal: '다음 블록 수신 중...',
-
-            },
-            en: {
-                lang_select: "Language Select", 
-lang_desc: "Set the display language for in-game text.",
-                
-                // Intro Script
-                intro_line_0: "Welcome to MH, New Agent.\nYour mission is as follows:",
-                intro_line_1_a: "Craft the correct Objekt corresponding to the Order and deliver it to the Client.",
-                intro_line_1_b: "Match the Data pool items below accurately and Input them into the Slot.",
-                intro_line_1_c: "Remember, all Order Blocks have a strict deadline.",
-                intro_line_1_d: "Before deployment, you must fully understand the confidential data on the next page.",
-                intro_line_prompt: "...I don't tolerate mistakes. Are you up to it?",
-
-                // Item Descriptions
-                item_reload_desc: 'Adds 1 RELOAD count for the next stage.\n(Max +20 times)',
-                item_timePlus_desc: 'Increases the block time limit by 2 seconds.\n(Max Level 1)',
-                item_scan_desc: 'Displays member color hints for Birthday blocks.\n(Max Level 1)',
-                item_amulet_desc: '20% chance to change Defect/Friend cards to ARTMS cards upon input.\n(Max Level 1)',
-                item_assist_desc: '20% chance for Friend cards to appear in the Data Pool.\n(Max Level 1)',
-
-                // Boss Comments
-                boss_S_0: "Quite capable, aren't you. This is the minimum to become my partner.", boss_S_1: "A perfect job. S rank is not for everyone.", boss_S_2: "Hmm... This is satisfactory. I'll ask for you again.",
-                boss_A_0: "A... Not bad. But aim for S.", boss_A_1: "Excellent. But don't let your guard down.", boss_A_2: "Well done. Don't forget this feeling.",
-                boss_B_0: "B... You did average. Strive for better.", boss_B_1: "I still see room for improvement. Put in more effort.", boss_B_2: "Hey, Rookie. Show me better tomorrow.",
-                boss_C_0: "C? ...See me in my office tomorrow.", boss_C_1: "...Is this your best effort?", boss_C_2: "Rookie. Show me better tomorrow than today.",
-                boss_F_0: "Contract termination. Security access revoked due to underperformance. Report back to management immediately.", boss_F_1: "Warning: Mission failure. Further stage progress has been put on hold by the system.", boss_F_2: "Contract terminated due to unsatisfactory performance. No further assignments will be issued.",
-
-                // Ending Messages
-                ending_S_title: "PERFECT AGENT", ending_S_desc: "Everything was done perfectly!\nYou are an S-Class Agent of MH.",
-                ending_A_title: "ELITE AGENT", ending_A_desc: "Excellent performance.\nYou are an Elite Agent of MH.",
-                ending_B_title: "GOOD AGENT", ending_B_desc: "Mission completed successfully.\nWe expect better results next time.",
-                ending_C_title: "AGENT", ending_C_desc: "Mission completed.\n...But the Boss doesn't seem satisfied.",
-                ending_F_title: "TERMINATED", ending_F_desc: "Contract terminated due to failure to meet minimum required performance.",
-
-                // Gravity Panel
-                gravity_desc_prefix: 'Vote with COMO to decide',
-                gravity_desc_stage: 'Stage',
-                gravity_desc_suffix: 'which Dimension will perform!',
-                
-                // Dynamic Feedback / Modals / System
-                feedback_collect_full: 'COLLECT FULL!', 
-                feedback_not_enough_como: 'NOT ENOUGH COMO!', 
-                feedback_amulet_activated: '✨ AMULET ACTIVATED! ✨', 
-                feedback_joker_acquired: '✨ JOKER(MH) ACQUIRED! ✨',
-                feedback_card_acquired: ' Card Acquired!', 
-                feedback_grid_available: ' GRID AVAILABLE!', 
-                feedback_grid_complete: '✨ GRID COMPLETE!',
-                feedback_need_four_cards: 'You need 4 or more identical common cards!', 
-                feedback_spin_failed: 'SPIN FAILED... Card Lost!', 
-                feedback_reload_penalty: 'Score Penalty',
-
-                // Confirm Modal
-                confirm_return_title: '⚠️ WARNING', confirm_return_msg: 'All current progress will be reset.\nReturn to Title?',
-
-                // Playing Screen
-                playing_next_block_boss: 'WARNING: Dimension Detecting...',
-                playing_next_block_normal: 'Receiving Next Block...',
-                
-            },
-        };
 
         function objektCard(cardData, showEffects = true) {
             return {
@@ -491,11 +372,8 @@ lang_desc: "Set the display language for in-game text.",
                 currentSeasonIndex: 0, // 시즌 인덱스 (0: Atom01, 1: Binary01, ...)
 
                 // v10.138: 다국어 지원 설정 추가
-                currentLang: 'ko', // 현재 언어 코드
-                supportedLangs: [ // 지원 언어 목록
-                    { code: 'ko', name: '한국어' }, 
-                    { code: 'en', name: 'English' }
-                ],
+                currentLang: 'en', // 현재 언어 코드
+                supportedLangs: [{ code: 'ko', name: '한국어 (Korean)' }, { code: 'en', name: 'English' }, { code: 'ja', name: '日本語 (Japanese)' }],
                 // v10.138: 번역 데이터 저장소
                 translations: {}, 
                 
@@ -708,9 +586,9 @@ lang_desc: "Set the display language for in-game text.",
                     if (bgmName) {
                         let audio = this.bgm[bgmName];
                         
-                        // BGM이 로드되지 않았으면 로드 (경로 수정)
+                        // BGM이 로드되지 않았으면 로드
                         if (!audio) {
-                            audio = new Audio(`assets/audio/${bgmName}`); // 경로 수정: assets/audio 폴더로 변경
+                            audio = new Audio(`audio/${bgmName}`); // 경로 수정: audio 폴더로 변경
                             audio.loop = true;
                             this.bgm[bgmName] = audio;
                         }
@@ -749,8 +627,7 @@ lang_desc: "Set the display language for in-game text.",
                     const singleSoundList = ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear'];
                     
                     singleSoundList.forEach(s => {
-                        // v10.157: 파일 경로 수정
-                        this.sounds[s] = new Audio(`assets/audio/sfx_${s}.mp3`);
+                        this.sounds[s] = new Audio(`audio/sfx_${s}.mp3`);
                         this.sounds[s].volume = this.sfxVolume;
                     });
 
@@ -2325,14 +2202,10 @@ lang_desc: "Set the display language for in-game text.",
                             <select @change="setLanguage($event.target.value)" 
                                     class="w-full bg-black/40 border border-white/20 text-white py-3 px-4 rounded-xl text-lg font-bold appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-purple-500" 
                                     :value="currentLang">
-                                <!-- 현재 지원하는 언어 목록을 드롭다운 옵션으로 표시 -->
+                                <!-- v10.158: 실제 지원하는 언어 목록만 표시 -->
                                 <template x-for="lang in supportedLangs" :key="lang.code">
                                     <option :value="lang.code" x-text="lang.name"></option>
                                 </template>
-                                <!-- 임시로 더미 언어 추가 (더 많은 언어를 지원할 경우의 예시) -->
-                                <option value="ja">日本語 (Japanese) (Dummy)</option>
-                                <option value="zh">中文 (Chinese) (Dummy)</option>
-                                <option value="es">Español (Spanish) (Dummy)</option>
                             </select>
                             <!-- 커스텀 드롭다운 화살표 -->
                             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
