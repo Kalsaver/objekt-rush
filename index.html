@@ -90,18 +90,26 @@
             position: relative;
             overflow: hidden;
             border-right: 1px solid #ffffff33;
-            /* 무지갯빛 그라데이션을 배경으로 직접 적용 */
-            background-image: linear-gradient(135deg, rgba(255, 0, 255, 1.0), rgba(0, 255, 255, 1.0), rgba(255, 255, 0, 1.0));
-            background-size: 100% 200%;
-            /* v10.136 FIX: 애니메이션 속도 5s로 조정, 키프레임 0%->200%로 변경하여 흐르는 효과 명확화 */
+            /* v10.168: 부드러운 수직 흐름을 위한 새로운 그라데이션 및 크기 설정 */
+            /* 그라데이션: 무지개 색상 배열을 수직으로 450%까지 확장하여 흐름을 길게 만듦 */
+            background-image: linear-gradient(0deg, 
+                rgba(255, 0, 255, 0.8) 0%, /* 보라 */
+                rgba(255, 255, 0, 0.8) 25%, /* 노랑 */
+                rgba(0, 255, 255, 0.8) 50%, /* 시안 */
+                rgba(255, 0, 255, 0.8) 75%, /* 보라 (연결용) */
+                rgba(255, 255, 0, 0.8) 100% /* 노랑 (연결용) */
+            );
+            background-size: 100% 450%; /* 수직으로 450%까지 확장 (매우 길게) */
+            /* v10.136 FIX: 애니메이션 속도 5s로 조정 */
             animation: holo-color 5s linear infinite; 
         }
         /* v10.129 FIX: 복잡했던 before/after 애니메이션 제거 */
         .holo-bg::before, .holo-bg::after { content: none; }
         
         @keyframes holo-color {
-            0% { background-position: 50% 100%; } /* 수직 시작 위치 */
-            100% { background-position: 50% 0%; }  /* 수직 끝 위치 */
+            /* v10.169: 수직 흐름 방향을 뒤집어 자연스러운 하강 효과 구현 */
+            0% { background-position: 50% 100%; } /* 상단에서 시작 (실제 배경의 아랫부분을 보여줌) */
+            100% { background-position: 50% 0%; } /* 아래로 이동 (실제 배경의 윗부분을 보여줌) */
         }
 
         .btn-green-glow { box-shadow: 0 0 10px rgba(34, 197, 94, 0.3); border-color: rgba(34, 197, 94, 0.5); }
@@ -317,6 +325,7 @@
                 completedCards: [],
                 selectedData: null,
                 matchedOrderIndices: [],
+                isDataReady: true, // v10.161: 데이터 풀 렌더링 제어 플래그 추가
                 
                 // Inventory
                 inventory: [],
@@ -328,8 +337,8 @@
                 assistLevel: 0,
                 timePlusLevel: 0,
                 scanLevel: 0,
-                reloadCount: 10, // 기본 10회
-                reloadBoost: 0, // 구매로 추가된 횟수
+                reloadBoost: 0, // v10.171: 구매한 추가 횟수 (최대 20회) - 영구 유지
+                reloadCount: 10, // v10.171: 현재 스테이지에서 사용 가능한 횟수 (10 + reloadBoost로 초기화됨)
                 currentReloadPenalty: 5,
                 
                 // Modals
@@ -351,6 +360,7 @@
                 intermissionSpinCount: 0,
                 isCrafting: false,
                 craftingCard: null,
+                isSpinGridReady: true, // v10.164: SPIN 그리드 렌더링 제어 플래그 추가
                 
                 // Ranking
                 highScores: [],
@@ -573,7 +583,8 @@
                     'settings': 'bgm_title.mp3', // 설정 화면에서도 타이틀 음악 공유
                     'intermission': 'bgm_intermission.mp3',
                     'playing': 'bgm_playing.mp3',
-                    'gacha': 'bgm_intermission.mp3', // 상점/가챠는 인터미션 음악 공유
+                    'boss_playing': 'bgm_boss.mp3', // v10.160: 보스 BGM 재등록
+                    'gacha': 'bgm_intermission.mp3', // v10.166: Gacha 화면에 인터미션 BGM 재활성화
                     'submitScore': 'bgm_intermission.mp3',
                     'ending': 'bgm_ending.mp3'
                 },
@@ -741,8 +752,8 @@
                     if (!config) { console.error(`Stage config for stage ${this.stage} not found.`); return; }
                     this.targetScore = 0; this.totalBlocksPerStage = config.blocks + config.bosses.length; this.decoyRatio = config.decoy;
                     
-                    // Reload는 인터미션에서 구매된 상태로 넘어오므로 재설정 안함
-                    this.reloadCount = 10; // 기본 10회 고정
+                    // v10.171: Reload 횟수를 기본 10회 + 구매 횟수를 합산하여 초기화 (스테이지마다 리셋됨)
+                    this.reloadCount = 10 + this.reloadBoost; 
                     this.currentReloadPenalty = 5; 
                     
                     this.score = 0; this.blocksCompleted = 0; 
@@ -827,13 +838,20 @@
 
                     // v10.111 FIX: Intermission 진입 전, 다음 스테이지로 미리 업데이트 (구조 변경)
                     let nextIsEnding = false;
+                    let nextIsOvertimeSubmit = false; // v10.174: 오버타임 제출 플래그 추가
+
                     if (this.stage < 10) {
                         this.stage++; // 다음 스테이지로 미리 업데이트
                     } else if (this.stage === 10) { 
                         // Stage 10 클리어 -> Ending으로 진입 (Stage는 10으로 유지)
                         nextIsEnding = true;
                     } else if (this.stage === 11) {
-                        // Stage 11 클리어 -> Stage는 11로 유지 (Overtime)
+                        // v10.174: Stage 11 클리어 후 오버타임 기록 제출 조건 확인
+                        this.loadExtraHighScores();
+                        const lowestExtraScore = (this.extraHighScores.length < 10) ? 0 : this.extraHighScores[9].score;
+                        if (this.lastStageScore > lowestExtraScore) { 
+                            nextIsOvertimeSubmit = true;
+                        }
                     }
                     
                     if (nextIsEnding) {
@@ -849,7 +867,11 @@
                         } else { 
                             this.gameState = 'ending'; 
                         }
-                    } else { // Stage 10 미만 또는 Overtime 클리어
+                    } else if (nextIsOvertimeSubmit) { // v10.174: 오버타임 기록 제출 화면으로 전환
+                        this.playerName = 'AAA'; 
+                        this.previousGameState = 'intermission'; 
+                        this.gameState = 'submitScore'; 
+                    } else { // Stage 10 미만 또는 오버타임 기록 미달 시 인터미션 진입
                         this.gameState = 'intermission'; 
                         
                         // v10.155: F 등급일 경우 BGM 재생 방지
@@ -983,12 +1005,6 @@
                             const pool = this.bossPools[poolKey];
                             let gravityPool = this.gravityVotes;
                             
-                            // v10.111: 오버타임(stage 11)일 때도 투표가 반영되어야 함
-                            // if (this.stage <= 10) { // 이 조건 제거
-                                gravityPool = {}; 
-                                pool.forEach(name => gravityPool[name] = this.gravityVotes[name] || 0); 
-                            // }
-                            
                             const totalVotes = pool.reduce((acc, name) => acc + (gravityPool[name] || 0), 0) + pool.length;
                             
                             if (totalVotes > 0) {
@@ -1015,6 +1031,15 @@
                     
                     this.currentBlock = { id: Date.now() + Math.random(), members: members, bundleType: chosenType, bundleLabel: blockLabel, timeLimit: blockTime, timer: blockTime, isBoss: isBoss };
                     this.completedCards = []; this.selectedData = null; this.selectedInventoryCard = null; this.updateMatchedOrders(); this.startBlockTimer(); 
+                    
+                    // v10.160: 보스 BGM 전환 로직 재활성화
+                    if (isBoss) {
+                        this.isBossBlockActive = true;
+                        this.switchBGM('boss_playing');
+                    } else {
+                        this.isBossBlockActive = false;
+                        this.switchBGM('playing'); // 일반 블록일 경우 'playing' BGM 유지
+                    }
                 },
                 checkStageCompletion() {
                     const block = this.currentBlock; 
@@ -1026,6 +1051,8 @@
 
                     if (isLastNormalBlock || isStageComplete) { // v10.151: 스테이지 완료 시에도 클리어 로직 실행
                         this.consecutivePerfects = 0; this.chainCount = 0;
+                        // v10.160: 스테이지 완료 시 보스 BGM 종료 플래그
+                        this.isBossBlockActive = false; 
                     }
 
                     if (isStageComplete) {
@@ -1041,8 +1068,13 @@
                         if (isLastNormalBlock) {
                             this.playSound('warn'); 
                             this.nextBlockWillBeBoss = true;
+                            // v10.160: 보스 BGM 종료 후 경고음 재생 및 일반 BGM으로 복귀
+                            this.switchBGM('playing'); 
                             setTimeout(() => { this.nextBlockWillBeBoss = false; this.generateNewBlock(); }, 3000); 
                         } else { 
+                            // v10.160: 다음 블록 생성 시 보스 BGM 종료 확인
+                            this.isBossBlockActive = false; 
+                            this.switchBGM('playing'); 
                             setTimeout(() => { this.generateNewBlock(); }, 1500); 
                         }
                     }
@@ -1166,8 +1198,15 @@
                         this.selectedInventoryCard = null;
                     }
                     
-                    const newCard = { ...newCardData, id: Date.now() + Math.random(), isSpecial: newCardData.isSpecial || false };
-                    if (this.completedCards.length < 8) this.completedCards.push(newCard); 
+                    // v10.165: 슬롯에 입력할 카드 데이터 생성 로직 수정
+                    // 스페셜 카드를 입력하더라도, 슬롯에는 일반 카드의 모습으로 표시되도록 isSpecial 플래그를 false로 설정합니다.
+                    const newCard = { 
+                        ...newCardData, 
+                        id: Date.now() + Math.random(), 
+                        isSpecial: false // 스페셜 카드를 슬롯에 넣을 때 false로 강제하여 일반 카드의 모습으로 표시
+                    };
+                    
+                    if (this.completedCards.length < 8) this.completedCards.push(newCard);
                     else { this.completedCards.shift(); this.completedCards.push(newCard); }
                     
                     this.updateMatchedOrders(); 
@@ -1212,19 +1251,11 @@
                 reloadData() {
                     this.playSound('refresh'); 
                     
-                    let actualReloads = 0;
-
-                    // v10.126: 기본 횟수 10회를 먼저 소진
+                    // v10.171: reloadCount를 사용하여 소진 로직 적용
                     if (this.reloadCount > 0) {
                         this.reloadCount--;
-                        actualReloads = this.reloadCount;
                     } 
-                    // 기본 횟수 소진 후 구매한 부스트 횟수 소진
-                    else if (this.reloadBoost > 0) {
-                        this.reloadBoost--;
-                        actualReloads = this.reloadBoost;
-                    } 
-                    // 모든 횟수 소진 후 페널티 적용
+                    // 횟수가 없을 때 페널티 적용
                     else {
                         this.score = Math.max(0, this.score - this.currentReloadPenalty);
                         this.showFeedback('Score Penalty -${this.currentReloadPenalty}', 'incorrect');
@@ -1236,22 +1267,19 @@
                     this.selectedInventoryCard = null; this.selectedData = null;
                 },
                 getReloadDisplayCount() {
-                    // v10.126: Reload 버튼에 표시되는 횟수 로직
+                    // v10.171: 현재 스테이지의 잔량(기본 10 + 구매 잔량)을 표시
                     if (this.reloadCount > 0) {
-                        return this.reloadCount; // 기본 횟수 표시
-                    }
-                    if (this.reloadBoost > 0) {
-                        return this.reloadBoost; // 구매 횟수 표시
+                        return this.reloadCount; // 잔량 표시
                     }
                     return -this.currentReloadPenalty; // 페널티 표시
                 },
                 getReloadDisplayColor() {
-                    // v10.126: Reload 버튼 색상 로직
-                    if (this.reloadCount > 0) {
-                        return 'text-white'; // 기본 횟수 잔여 시 흰색
+                    // v10.171: Reload 버튼 색상 로직 수정 (10회 초과 시 녹색 적용)
+                    if (this.reloadCount > 10) {
+                        return 'text-green-400'; // 구매 횟수가 포함된 경우 (11회 이상)
                     }
-                    if (this.reloadBoost > 0) {
-                        return 'text-cyan-400'; // 구매 횟수 잔여 시 시안색
+                    if (this.reloadCount > 0) {
+                        return 'text-white'; // 기본 횟수 잔여 시 흰색 (1회~10회)
                     }
                     return 'text-red-400'; // 페널티 시 빨간색
                 },
@@ -1259,6 +1287,9 @@
                     if (!this.selectedData) return;
                     const selected = this.selectedData;
                     
+                    // v10.167: DOM 추적 오류 방지를 위해 렌더링을 일시 중단합니다.
+                    this.isDataReady = false; 
+
                     // v10.147 FIX: 안전한 교체 (splice)를 위해 getNewData가 항상 새 ID를 갖도록 호출
                     const newData = this.getNewData(selected.type); 
                     
@@ -1276,10 +1307,18 @@
                         }
                     }
                     this.selectedData = null;
+                    
+                    // v10.167: 안정적인 재렌더링을 위해 10ms 딜레이 후 복구
+                    setTimeout(() => {
+                        this.isDataReady = true;
+                    }, 10); // 딜레이를 10ms로 설정
                 },
                 shuffleArray(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
                 ,
                 refillData(isSafeMode = false) {
+                    // v10.161: DOM 추적 오류 방지를 위해 렌더링을 일시 중단합니다.
+                    this.isDataReady = false; 
+
                     let memberPool = [...this.memberData];
                     this.shuffleArray(memberPool);
                     const selectedTwelve = memberPool.slice(0, 12);
@@ -1288,16 +1327,20 @@
                     const newEngData = [];
 
                     for (let i = 0; i < 6; i++) {
-                        // isSafeMode=true 상태로 generateDataItem 호출 -> 항상 새 ID 할당
                         newKorData.push(this.generateDataItem(selectedTwelve[i], 'kor', isSafeMode)); 
                     }
                     for (let i = 6; i < 12; i++) {
                         newEngData.push(this.generateDataItem(selectedTwelve[i], 'eng', isSafeMode));
                     }
                     
-                    // v10.147 FIX: splice를 사용하여 Alpine의 DOM 노드 추적 충돌을 최소화
+                    // splice를 사용하여 배열 업데이트
                     this.korData.splice(0, this.korData.length, ...newKorData);
                     this.engData.splice(0, this.engData.length, ...newEngData);
+                    
+                    // v10.163: 안정성과 깜빡임 최소화의 타협점으로 딜레이를 10ms로 설정
+                    setTimeout(() => {
+                        this.isDataReady = true;
+                    }, 10); // 딜레이를 10ms로 변경
                 },
                 getNewData(type) {
                     const currentDisplayedSNumbers = [...this.korData, ...this.engData].map(d => d.originSNumber).filter(Boolean);
@@ -1419,7 +1462,8 @@
                          this.como -= info.cost;
                          this.playSound('buy'); 
                          switch(item) {
-                            case 'reload': this.reloadBoost = Math.min(20, this.reloadBoost + 1); break;
+                            // v10.171: reloadBoost만 증가시키고 최대 20개로 제한
+                            case 'reload': this.reloadBoost = Math.min(20, this.reloadBoost + 1); break; 
                             case 'scan': this.scanLevel++; break; 
                             case 'amulet': this.amuletLevel++; break; 
                             case 'assist': this.assistLevel++; break; 
@@ -1439,32 +1483,52 @@
                     this.selectedInventoryCardForSpin = this.selectedInventoryCard; this.selectedInventoryCard = null; this.spinResult = null; this.generateSpinGrid(); this.isSpinning = true; 
                 },
                 generateSpinGrid() {
-                    this.spinGrid = []; 
+                    // v10.164: DOM 추적 오류 방지를 위해 렌더링을 일시 중단합니다.
+                    this.isSpinGridReady = false; 
+
+                    const newSpinGrid = [];
                     // v10.127: Spin에서 획득 가능한 스페셜 카드 (isSpecial: true)를 첫 번째 요소로 추가
-                    this.spinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: true, type: 'member_card' });
-                    for (let i = 0; i < 2; i++) this.spinGrid.push({ ...(this.modhausData.find(m => m.sNumber === 'X')), inventoryId: Date.now() + Math.random(), isSpecial: false });
-                    for (let i = 0; i < 13; i++) this.spinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'member_card' });
-                    this.shuffleArray(this.spinGrid);
+                    newSpinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: true, type: 'member_card' });
+                    for (let i = 0; i < 2; i++) newSpinGrid.push({ ...(this.modhausData.find(m => m.sNumber === 'X')), inventoryId: Date.now() + Math.random(), isSpecial: false });
+                    for (let i = 0; i < 13; i++) newSpinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'member_card' });
+                    this.shuffleArray(newSpinGrid);
+                    
+                    // splice를 사용하여 배열 업데이트
+                    this.spinGrid.splice(0, this.spinGrid.length, ...newSpinGrid); 
+                    
+                    // v10.164: 안정적인 재렌더링을 위해 10ms 딜레이 후 복구
+                    setTimeout(() => {
+                        this.isSpinGridReady = true;
+                    }, 10); // 딜레이를 10ms로 설정
                 },
                 selectSpinCard(card) {
                     if (this.spinResult) return; 
                     this.playSound('input'); 
                     this.spinResult = card; 
                     const index = this.inventory.findIndex(c => c.inventoryId === this.selectedInventoryCardForSpin.inventoryId);
-                    if (index > -1) {
-                        if (card.type !== 'fail_card') { 
-                            this.inventory.splice(index, 1, card); 
-                            // v10.138: 다국어 키를 이용해 피드백 메시지 생성
-                            this.showFeedback(`${card.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct'); 
-                            if (!card.isSpecial) this.checkCraftingAvailability(card); 
+                    
+                    // v10.164: 인벤토리 업데이트 로직을 딜레이 내부로 옮겨 DOM 충돌 방지
+                    setTimeout(() => {
+                        if (index > -1) {
+                            if (card.type !== 'fail_card') { 
+                                this.inventory.splice(index, 1, card); 
+                                // v10.138: 다국어 키를 이용해 피드백 메시지 생성
+                                this.showFeedback(`${card.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct'); 
+                                if (!card.isSpecial) this.checkCraftingAvailability(card); 
+                            }
+                            else { 
+                                this.inventory.splice(index, 1); 
+                                // v10.138: 다국어 키를 이용해 피드백 메시지 생성
+                                this.showFeedback(this.translate('feedback_spin_failed'), 'incorrect'); 
+                            }
                         }
-                        else { 
-                            this.inventory.splice(index, 1); 
-                            // v10.138: 다국어 키를 이용해 피드백 메시지 생성
-                            this.showFeedback(this.translate('feedback_spin_failed'), 'incorrect'); 
-                        }
-                    }
-                    setTimeout(() => { this.isSpinning = false; setTimeout(() => { this.selectedInventoryCardForSpin = null; this.spinResult = null; }, 300); }, 2000); 
+                        // 최종 정리 로직
+                        setTimeout(() => { 
+                            this.isSpinning = false; 
+                            this.isSpinGridReady = false; // 그리드도 초기화
+                            setTimeout(() => { this.selectedInventoryCardForSpin = null; this.spinResult = null; }, 300); // 최종 상태 클린업
+                        }, 2000); 
+                    }, 10); // v10.164: 인벤토리 DOM 업데이트 전 10ms 딜레이 추가
                 },
                 canCraft() { if (!this.selectedInventoryCard || this.selectedInventoryCard.isSpecial) return false; return this.inventory.filter(c => c.sNumber === this.selectedInventoryCard.sNumber && !c.isSpecial).length >= 4; },
                 startGridCraft() {
@@ -1809,25 +1873,30 @@
                             class="glass-button w-full py-4 text-xl font-bold rounded-2xl transition-all active:scale-95">INPUT</button>
                 </div>
 
-                <div id="data-pool" class="w-full flex-grow grid grid-cols-2 gap-2 p-2 glass-panel rounded-t-2xl overflow-hidden border-b-0">
-                    <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
-                        <template x-for="(data, index) in korData" :key="data.id">
-                            <button @click="selectData('kor', data.name, data.id)" 
-                                    :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
-                                    class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
-                                <span x-text="data.name"></span>
-                            </button>
-                        </template>
-                    </div>
-                    <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
-                        <template x-for="(data, index) in engData" :key="data.id">
-                            <button @click="selectData('eng', data.name, data.id)" 
-                                    :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
-                                    class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
-                                <span x-text="data.name"></span>
-                            </button>
-                        </template>
-                    </div>
+                <div id="data-pool" class="w-full flex-grow grid grid-cols-2 gap-2 p-2 glass-panel rounded-t-2xl overflow-hidden border-b-0 md:max-h-80">
+                    <!-- v10.161: isDataReady 플래그로 렌더링을 제어하여 Alpine 오류 방지 -->
+                    <template x-if="isDataReady">
+                        <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
+                            <template x-for="(data, index) in korData" :key="data.id">
+                                <button @click="selectData('kor', data.name, data.id)" 
+                                        :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
+                                        class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
+                                    <span x-text="data.name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="isDataReady">
+                        <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
+                            <template x-for="(data, index) in engData" :key="data.id">
+                                <button @click="selectData('eng', data.name, data.id)" 
+                                        :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
+                                        class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
+                                    <span x-text="data.name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
                 </div>
             </div> 
             
@@ -2209,7 +2278,7 @@
                         
                         <div class="relative">
                             <select @change="setLanguage($event.target.value)" 
-                                    class="w-full bg-black/40 border border-white/20 text-white py-3 px-4 rounded-xl text-lg font-bold appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    class="w-full bg-black/70 border border-purple-500/50 text-white py-3 px-4 rounded-xl text-lg font-bold appearance-none pr-10 focus:outline-none focus:ring-2 focus:ring-purple-500" 
                                     :value="currentLang">
                                 <!-- v10.158: 실제 지원하는 언어 목록만 표시 -->
                                 <template x-for="lang in supportedLangs" :key="lang.code">
@@ -2286,30 +2355,34 @@
             <!-- Spin Modal -->
             <div x-show="isSpinning" x-transition.opacity.duration.300ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-4 z-50 bg-black/70 backdrop-blur-sm">
                 <h2 class="text-3xl font-bold text-pink-400 text-glow-sm mb-8" x-text="spinResult ? 'SPIN COMPLETE!' : (selectedInventoryCardForSpin ? `SPIN TARGET: ${selectedInventoryCardForSpin.sNumber}` : 'SPINNING...')"></h2>
-                <div class="grid grid-cols-4 gap-3 p-4 glass-panel rounded-3xl">
-                    <template x-for="card in spinGrid" :key="card.inventoryId">
-                        <div class="w-16 h-20 perspective">
-                            <div class="card-flip cursor-pointer" :class="{'is-flipped': spinResult}" @click="!spinResult ? selectSpinCard(card) : null">
-                                <div class="card-face card-back rounded-lg border-2 border-gray-400">
-                                    <div class="w-full h-full bg-gradient-to-bl from-[#0a0e17] via-[#0c1445] to-[#0a0e17] flex items-center justify-center">
-                                        <span class="text-gray-300 text-3xl font-black opacity-50">//</span>
+                
+                <!-- v10.164: isSpinGridReady 플래그로 렌더링 제어 -->
+                <template x-if="isSpinGridReady">
+                    <div class="grid grid-cols-4 gap-3 p-4 glass-panel rounded-3xl">
+                        <template x-for="card in spinGrid" :key="card.inventoryId">
+                            <div class="w-16 h-20 perspective">
+                                <div class="card-flip cursor-pointer" :class="{'is-flipped': spinResult}" @click="!spinResult ? selectSpinCard(card) : null">
+                                    <div class="card-face card-back rounded-lg border-2 border-gray-400">
+                                        <div class="w-full h-full bg-gradient-to-bl from-[#0a0e17] via-[#0c1445] to-[#0a0e17] flex items-center justify-center">
+                                            <span class="text-gray-300 text-3xl font-black opacity-50">//</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-face card-front" :class="{'ring-2 ring-offset-2 ring-offset-black ring-purple-500 rounded-lg': spinResult && spinResult.inventoryId === card.inventoryId}">
+                                        <template x-if="card">
+                                            <div x-data="objektCard(card)">
+                                                <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" :class="borderStyles" :style="cardStyles.background">
+                                                    <div class="flex-grow h-full flex flex-col items-center justify-center p-1"><span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span><span class="text-xs font-bold" :style="cardStyles.text" x-text="card.kor"></span></div>
+                                                    <!-- v10.127: 홀로그램 효과가 정상적으로 표시되도록 수정 -->
+                                                    <div class="flex-shrink-0 w-1/5 h-full bg-black/30 flex items-center justify-center rounded-r-md" :class="card.isSpecial ? 'holo-bg' : 'bg-black/30'"><span class="text-xs font-bold text-white writing-mode-v-rl" x-text="card.eng"></span></div>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
-                                <div class="card-face card-front" :class="{'ring-2 ring-offset-2 ring-offset-black ring-purple-500 rounded-lg': spinResult && spinResult.inventoryId === card.inventoryId}">
-                                    <template x-if="card">
-                                        <div x-data="objektCard(card)">
-                                            <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" :class="borderStyles" :style="cardStyles.background">
-                                                <div class="flex-grow h-full flex flex-col items-center justify-center p-1"><span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span><span class="text-xs font-bold" :style="cardStyles.text" x-text="card.kor"></span></div>
-                                                <!-- v10.127: 홀로그램 효과가 정상적으로 표시되도록 수정 -->
-                                                <div class="flex-shrink-0 w-1/5 h-full bg-black/30 flex items-center justify-center rounded-r-md" :class="card.isSpecial ? 'holo-bg' : 'bg-black/30'"><span class="text-xs font-bold text-white writing-mode-v-rl" x-text="card.eng"></span></div>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
                             </div>
-                        </div>
-                    </template>
-                </div>
+                        </template>
+                    </div>
+                </template>
             </div>
 
             <!-- Grid Modal -->
@@ -2354,7 +2427,8 @@
                     <h3 class="text-2xl font-bold text-white mb-4" x-text="shopModal.title"></h3>
                     <!-- v10.138: desc는 이미 다국어 키를 통해 translate되어 들어옴 -->
                     <p class="text-lg text-gray-300 mb-2 whitespace-pre-line" x-text="shopModal.desc"></p>
-                    <template x-if="shopModal.item === 'reload'"><p class="text-base font-bold text-cyan-300 mb-4" x-text="`(현재 구매 충전: +${reloadBoost}회)`"></p></template>
+                    <!-- v10.173: 구매 충전 횟수 표시 간결화 (영문 하드코딩) -->
+                    <template x-if="shopModal.item === 'reload'"><p class="text-base font-bold text-cyan-300 mb-4" x-text="`CURRENT CHARGE: +${reloadBoost}`"></p></template>
                     <div class="flex justify-center items-center mb-8" x-show="!shopModal.isMax">
                         <!-- v10.139: COST: 하드코딩 -->
                         <span class="text-gray-400 mr-2 text-2xl font-bold">COST:</span>
