@@ -9,7 +9,6 @@
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     <style>
         /* --- 기본 레이아웃 & 스크롤바 --- */
-        /* v10.130: x-cloak 사용을 위한 CSS 추가 */
         [x-cloak] { display: none !important; }
         
         body, #game-container { height: 100vh; height: -webkit-fill-available; background-color: #000; }
@@ -410,7 +409,6 @@
                     PERFECT_BASE: 5, // v10.175: 100 -> 5 (카드 수에 곱해질 기본값)
                     BOSS_FIXED_BONUS: 300, // v10.175: 500 -> 300
                     FAIL_PENALTY: 30, // v10.175: 50 -> 30
-                    FRIEND_PENALTY: 10 // v10.175: 20 -> 10
                 },
                 // v10.138: ITEM_INFO 키로 대체
                 ITEM_INFO: {
@@ -704,7 +702,7 @@
                         { sNumber: 'Zenith', color: '#333333', textColor: '#52D9BB' }
                        
                     ];
-                    this.modhausData = [ { sNumber: 'X', kor: '불량', eng: 'Defect', color: '#F5F5F5', birthday: '08-08', type: 'fail_card' }, { sNumber: 'MH', kor: '제이든', eng: 'Jaden', color: '#333333', birthday: '05-01', type: 'joker_card' } ];
+                    this.modhausData = [ { sNumber: 'X', kor: '실패', eng: 'Fail', color: '#F5F5F5', birthday: '08-08', type: 'fail_card' }, { sNumber: 'MH', kor: '제이든', eng: 'Jaden', color: '#333333', birthday: '05-01', type: 'joker_card' } ];
                     this.artmsData = [ { sNumber: 'A1', kor: '희진', eng: 'HeeJin', color: '#ED008F', birthday: '10-19', type: 'goddess_card' }, { sNumber: 'A2', kor: '하슬', eng: 'HaSeul', color: '#01C261', birthday: '08-18', type: 'goddess_card' }, { sNumber: 'A3', kor: '김립', eng: 'Kim Lip', color: '#DB3547', birthday: '02-10', type: 'goddess_card' }, { sNumber: 'A4', kor: '진솔', eng: 'JinSoul', color: '#1724A7', birthday: '06-13', type: 'goddess_card' }, { sNumber: 'A5', kor: '최리', eng: 'Choerry', color: '#5B2A93', birthday: '06-04', type: 'goddess_card' } ];
                     this.friendData = [ { sNumber: 'BB', kor: '비비', eng: 'BIBI', color: '#AAAAAA', birthday: '09-27', type: 'friend_card' }, { sNumber: 'HS', kor: '형서', eng: 'HyungSeo', color: '#AAAAAA', birthday: '06-25', type: 'friend_card' }, { sNumber: 'JM', kor: '지민', eng: 'JiMin', color: '#AAAAAA', birthday: '11-25', type: 'friend_card' }, { sNumber: 'BE', kor: '보은', eng: 'BoEun', color: '#AAAAAA', birthday: '02-11', type: 'friend_card' }, { sNumber: 'YA', eng: 'YunAh', kor: '윤아', color: '#AAAAAA', birthday: '01-15', type: 'member_card' }, { sNumber: 'MK', kor: '모카', eng: 'Moka', color: '#AAAAAA', birthday: '10-08', type: 'member_card' }, { sNumber: 'DH', kor: '도희', eng: 'DoHee', color: '#AAAAAA', birthday: '12-09', type: 'member_card' }, { sNumber: 'SJ', kor: '승주', eng: 'SeungJoo', color: '#AAAAAA', birthday: '09-24', type: 'member_card' }, { sNumber: 'HR', eng: 'Haruna', kor: '하루나', color: '#AAAAAA', birthday: '01-30', type: 'member_card' }, { sNumber: 'YS', kor: '예서', eng: 'YeSeo', color: '#AAAAAA', birthday: '08-22', type: 'member_card' } ];
                 },
@@ -1163,7 +1161,6 @@
                         else {
                             wrongCount++;
                             if (card.type === 'fail_card') { penalty += this.SCORING.FAIL_PENALTY; }
-                            else if (card.type === 'friend_card') { penalty += this.SCORING.FRIEND_PENALTY; }
                             // ARTMS 카드나 매칭되지 않은 멤버 카드는 0 페널티
                         }
                     }
@@ -1242,15 +1239,18 @@
                     this.playSound('input'); 
                     let newCardData;
                     if (this.selectedData) {
-                        const dataName = this.selectedData.name;
-                        const member = this.memberData.find(m => m.kor === dataName || m.eng === dataName);
-                        const isFriend = this.friendData.find(f => f.kor === dataName || f.eng === dataName);
-                        
-                        if (member) newCardData = member;
-                        else if (isFriend) newCardData = isFriend; 
-                        else newCardData = this.modhausData.find(m => m.sNumber === 'X'); 
-                        
-                        if ((newCardData.type === 'fail_card' || newCardData.type === 'friend_card') && this.amuletLevel > 0 && Math.random() < 0.2) {
+                    const dataName = this.selectedData.name;
+                    const member = this.memberData.find(m => m.kor === dataName || m.eng === dataName);
+                    // v10.184: 'isFriend' 변수 제거
+
+                    if (member) { // S-CLASS 멤버(memberData)만 정답으로 인정
+                        newCardData = member;
+                    } else { // 그 외 (미끼, 친구 데이터 등)는 모두 '불량 카드'로 처리
+                        newCardData = this.modhausData.find(m => m.sNumber === 'X'); 
+                    }
+
+                    // v10.184: AMULET 발동 조건에서 'friend_card' 타입 제거
+                    if (newCardData.type === 'fail_card' && this.amuletLevel > 0 && Math.random() < 0.2) {
                             newCardData = this.artmsData[Math.floor(Math.random() * this.artmsData.length)]; 
                             this.showFeedback(this.translate('feedback_amulet_activated'), 'correct');
                         }
