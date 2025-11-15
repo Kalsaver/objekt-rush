@@ -602,8 +602,32 @@ lang_desc: "Set the display language for in-game text.",
                 },
 
                 // v10.138: 번역 데이터 로드 (내부 상수 사용)
-                loadTranslationData(langCode) {
-                    this.translations = GAME_TEXTS[langCode] || GAME_TEXTS['ko'];
+                // v10.157: 외부 JSON 파일 로드 로직 (경로 수정: locales -> assets/locales)
+                async loadTranslationData(langCode) {
+                    const fallbackEn = {
+                        // 최소한의 필수 영어 키를 하드코딩
+                        lang_select: "Language Select", 
+                        lang_desc: "Set the display language for in-game text.",
+                        intro_line_0: "Welcome to MH, New Agent.\nYour mission is as follows:",
+                        confirm_return_title: "⚠️ WARNING", 
+                        confirm_return_msg: "All current progress will be reset.\nReturn to Title?",
+                        // 나머지 모든 키에 대한 최종 안전장치 (오류 메시지 대신 영어 키 사용)
+                    };
+                    
+                    try {
+                        // 1. 외부 JSON 파일 로드 시도 (경로 수정)
+                        const response = await fetch(`assets/locales/${langCode}.json`);
+                        if (!response.ok) throw new Error('File not found');
+                        
+                        // 2. 성공 시 로드된 데이터를 사용
+                        const externalTranslations = await response.json();
+                        this.translations = externalTranslations;
+                        
+                    } catch (error) {
+                        // 3. 실패 시, 최종 안전장치인 하드코딩된 영어 데이터를 사용
+                        console.error(`Failed to load translation for ${langCode}. Using English fallback.`, error);
+                        this.translations = fallbackEn; 
+                    }
                 },
 
                 // v10.138: 텍스트 번역 함수
@@ -684,9 +708,9 @@ lang_desc: "Set the display language for in-game text.",
                     if (bgmName) {
                         let audio = this.bgm[bgmName];
                         
-                        // BGM이 로드되지 않았으면 로드
+                        // BGM이 로드되지 않았으면 로드 (경로 수정)
                         if (!audio) {
-                            audio = new Audio(`audio/${bgmName}`); // 경로 수정: audio 폴더로 변경
+                            audio = new Audio(`assets/audio/${bgmName}`); // 경로 수정: assets/audio 폴더로 변경
                             audio.loop = true;
                             this.bgm[bgmName] = audio;
                         }
@@ -725,7 +749,8 @@ lang_desc: "Set the display language for in-game text.",
                     const singleSoundList = ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear'];
                     
                     singleSoundList.forEach(s => {
-                        this.sounds[s] = new Audio(`audio/sfx_${s}.mp3`);
+                        // v10.157: 파일 경로 수정
+                        this.sounds[s] = new Audio(`assets/audio/sfx_${s}.mp3`);
                         this.sounds[s].volume = this.sfxVolume;
                     });
 
