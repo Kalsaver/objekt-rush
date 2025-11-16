@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBJEKT Rush (v10.198)</title>
+    <title>OBJEKT Rush (v10.200)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     <style>
@@ -241,6 +241,18 @@
             100% { filter: drop-shadow(0 0 15px currentColor); }
         }
 
+        /* SMART GUIDE GLOW for Stage 1 */
+        .guide-pulse {
+            box-shadow: 0 0 10px 3px rgba(250, 204, 21, 0.6);
+            border-color: rgba(250, 204, 21, 0.9) !important;
+            animation: guide-flash 1.5s infinite;
+            z-index: 10;
+        }
+        @keyframes guide-flash {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.02); }
+        }
+
     </style>
     <script>
 
@@ -417,9 +429,9 @@
                 },
                 
                 stageConfig: [
-                    { blocks: 7, decoy: 0, birthdayChance: 0, timeBonus: 3000, bosses: [] }, 
+                    { blocks: 7, decoy: 0, birthdayChance: 0, timeBonus: 2000, bosses: [] }, 
                     { blocks: 7, decoy: 0.1, birthdayChance: 0, timeBonus: 2000, bosses: [] }, 
-                    { blocks: 7, decoy: 0.1, birthdayChance: 0.1, timeBonus: 1000, bosses: [] }, 
+                    { blocks: 7, decoy: 0.1, birthdayChance: 0.1, timeBonus: 2000, bosses: [] }, 
                     { blocks: 8, decoy: 0.1, birthdayChance: 0.1, timeBonus: 0, bosses: [] }, 
                     { blocks: 8, decoy: 0.2, birthdayChance: 0.1, timeBonus: 0, bosses: ['NXT_GLOW'] }, 
                     { blocks: 8, decoy: 0.2, birthdayChance: 0.1, timeBonus: 0, bosses: ['AAA_KRE'] }, 
@@ -654,10 +666,24 @@
                 startGame(isContinuing = false) {
                     this.playSound('click');
                     if (!isContinuing) {
-                        this.stage = 1; this.como = 1; this.totalScore = 0; 
+                        this.stage = 1; 
+                        this.como = 5; 
+                        this.totalScore = 0; 
                         this.amuletLevel = 0; this.assistLevel = 0; this.timePlusLevel = 0; this.scanLevel = 0; 
                         this.reloadBoost = 20; 
-                        this.inventory = []; this.gravityVotes = {}; 
+                        this.inventory = []; 
+                        
+                        for (let i = 0; i < 3; i++) {
+                            const randomMember = this.memberData[Math.floor(Math.random() * this.memberData.length)];
+                            this.inventory.push({
+                                ...randomMember,
+                                inventoryId: Date.now() + Math.random(),
+                                isSpecial: false,
+                                type: 'member_card'
+                            });
+                        }
+
+                        this.gravityVotes = {}; 
                         this.stageGrades = []; 
                         this.gameState = 'intro'; this.introStep = 1;
                     } else {
@@ -1183,7 +1209,7 @@
                     else {
                         this.score = Math.max(0, this.score - this.currentReloadPenalty);
                         this.showFeedback('SCORE -' + this.currentReloadPenalty, 'incorrect');
-                        this.currentReloadPenalty = Math.min(30, this.currentReloadPenalty + 5);
+                        this.currentReloadPenalty = Math.min(20, this.currentReloadPenalty + 5);
                     }
 
                     this.refillData(true); 
@@ -1502,6 +1528,29 @@
                     }
                     return previousCount < requiredCount;
                 },
+                // --- SMART GUIDE LOGIC (STAGE 1 ONLY) ---
+                checkSmartGuide(item) {
+                    // Only active in Stage 1
+                    if (this.stage !== 1 || !this.currentBlock || !item) return false;
+                    
+                    const targetMembers = this.currentBlock.members;
+                    
+                    // Check if item's sNumber exists in the current block requirement
+                    // Since Stage 1 is simple matching, just check presence
+                    return targetMembers.some(m => m.sNumber === (item.originSNumber || item.sNumber));
+                },
+                checkSmartReload() {
+                     if (this.stage !== 1 || !this.currentBlock) return false;
+                     
+                     // Check Pool
+                     const poolHasMatch = [...this.korData, ...this.engData].some(d => this.checkSmartGuide(d));
+                     
+                     // Check Inventory (exclude special cards just in case)
+                     const invHasMatch = this.inventory.some(c => !c.isSpecial && this.checkSmartGuide(c));
+                     
+                     // If NO matches found anywhere, highlight reload
+                     return !poolHasMatch && !invHasMatch;
+                },
                 getBirthdayBackground(member) {
                     if (this.scanLevel === 0) return 'background-color: #F5F5F5; border-color: #A0A0A0;';
                     const twins = this.memberData.filter(m => m.birthday === member.birthday).sort((a, b) => parseInt(a.sNumber.slice(1)) - parseInt(b.sNumber.slice(1)));
@@ -1596,7 +1645,7 @@
                                          <template x-for="member in getMembersByDimension(dim.sNumber)" :key="member.sNumber">
                                              <div class="flex flex-col items-center p-1 bg-black/30 rounded-lg border border-white/10">
                                                  <div class="w-8 h-8 flex items-center justify-center rounded-md font-bold text-sm border" :style="`background-color: ${member.color}; border-color: #A0A0A0; color: #000;`" x-text="member.sNumber"></div>
-                                                 <span class="text-gray-300 text-[10px] mt-1" x-text="member.kor"></span>
+                                                 <span class="text-gray-300 text-xs mt-1" x-text="member.kor"></span>
                                              </div>
                                          </template>
                                     </div>
@@ -1719,7 +1768,7 @@
                                         :class="{'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500 rounded-lg': isSelectedInventory(card.inventoryId)}">
                                 <div x-data="objektCard(card)">
                                     <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" 
-                                        :class="borderStyles" 
+                                        :class="[borderStyles, checkSmartGuide(card) ? 'guide-pulse' : '']" 
                                         :style="cardStyles.background">
                                         <div class="flex-grow h-full flex flex-col items-center justify-center p-1">
                                             <span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span>
@@ -1736,7 +1785,7 @@
                 </div>
 
                 <div class="w-full px-1 py-2 grid grid-cols-2 gap-3">
-                    <button @click="reloadData()" class="glass-button w-full py-4 text-xl font-bold rounded-2xl transition-all active:scale-95">
+                    <button @click="reloadData()" class="glass-button w-full py-4 text-xl font-bold rounded-2xl transition-all active:scale-95" :class="{'guide-pulse': checkSmartReload()}">
                         RELOAD
                         <span :class="getReloadDisplayColor()" x-text="`(${getReloadDisplayCount()})`"></span>
                     </button>
@@ -1750,7 +1799,10 @@
                         <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
                             <template x-for="(data, index) in korData" :key="data.id">
                                 <button @click="selectData('kor', data.name, data.id)" 
-                                        :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
+                                        :class="[
+                                            isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10',
+                                            checkSmartGuide(data) ? 'guide-pulse' : ''
+                                        ]" 
                                         class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
                                     <span x-text="data.name"></span>
                                 </button>
@@ -1761,7 +1813,10 @@
                         <div class="grid grid-cols-2 grid-rows-3 gap-2 h-full">
                             <template x-for="(data, index) in engData" :key="data.id">
                                 <button @click="selectData('eng', data.name, data.id)" 
-                                        :class="isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10'" 
+                                        :class="[
+                                            isSelectedData(data.id) ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500' : 'bg-white/5 hover:bg-white/10',
+                                            checkSmartGuide(data) ? 'guide-pulse' : ''
+                                        ]" 
                                         class="w-full h-full flex items-center justify-center text-base font-medium rounded-xl shadow-sm transition-all transform active:scale-95 text-center p-1 border border-white/5 backdrop-blur-sm text-gray-200">
                                     <span x-text="data.name"></span>
                                 </button>
@@ -2165,7 +2220,7 @@
                         <div class="space-y-3 text-sm text-gray-400">
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>VERSION</span>
-                                <span class="text-white font-mono">v10.198</span>
+                                <span class="text-white font-mono">v10.200</span>
                             </div>
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>DEVELOPER</span>
