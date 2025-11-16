@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBJEKT Rush (v10.196)</title>
+    <title>OBJEKT Rush (v10.198)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     <style>
@@ -1197,10 +1197,10 @@
                 },
                 getReloadDisplayColor() {
                     if (this.reloadCount > 10) {
-                        return 'text-green-400'; 
+                        return 'text-cyan-400';
                     }
                     if (this.reloadCount > 0) {
-                        return 'text-white'; 
+                        return 'text-white';
                     }
                     return 'text-red-400'; 
                 },
@@ -1326,14 +1326,16 @@
                 },
                 closeGachaModal() { this.playSound('click'); this.gameState = 'intermission'; },
                 startGachaAnimation() {
-                    if (this.como < 1) { this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); return; }
-                    this.como -= 1;
+                    // v10.197 FIX: ITEM_INFO.objekt.cost를 사용하여 가격 동기화 (하드코딩 1 제거)
+                    const cost = this.ITEM_INFO.objekt.cost;
+                    if (this.como < cost) { this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); return; }
+                    this.como -= cost;
                     this.playSound('gacha'); 
                     this.gachaState = 'opening';
                     
                     setTimeout(() => {
                         if (this.inventory.length >= this.inventoryMaxSize) {
-                             this.como += 1; 
+                             this.como += cost; // v10.197 FIX: 환불 시에도 cost 변수 사용
                              this.showFeedback(this.translate('feedback_collect_full'), 'incorrect');
                              this.closeGachaModal();
                              return;
@@ -1349,9 +1351,11 @@
                     }, 0); 
                 },
                 confirmGachaResult() {
+                    // v10.197 FIX: ITEM_INFO.objekt.cost 사용
+                    const cost = this.ITEM_INFO.objekt.cost;
                     if (this.gachaResultCard) {
                          if (this.inventory.length >= this.inventoryMaxSize) {
-                              this.como += 1; 
+                              this.como += cost; // v10.197 FIX: 환불 시에도 cost 변수 사용
                               this.showFeedback(this.translate('feedback_collect_full'), 'incorrect'); 
                               this.closeGachaModal(); 
                               return;
@@ -2145,13 +2149,13 @@
                         <button @click="confirmReset('all')" class="glass-button w-full py-3 font-bold rounded-xl text-red-400 border-red-500/50 hover:bg-red-500/10">RESET ALL DATA</button>
                     </div>
 
-                    <!-- GAME INFO SECTION -->
+                    <!-- ABOUT SECTION -->
                     <div class="glass-panel p-5 rounded-2xl mb-6 border border-white/10">
                         <h3 class="text-xl font-bold text-gray-300 mb-4 flex items-center">ABOUT</h3>
                         <div class="space-y-3 text-sm text-gray-400">
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>VERSION</span>
-                                <span class="text-white font-mono">v10.196</span>
+                                <span class="text-white font-mono">v10.198</span>
                             </div>
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>DEVELOPER</span>
@@ -2380,7 +2384,8 @@
                     
                     <template x-if="gachaState === 'result'">
                         <div class="flex flex-col items-center mt-12">
-                            <h3 class="text-3xl font-black text-white mb-2 text-glow-sm" 
+                            <!-- v10.198 FIX: text-white 제거 (Cyan/Purple 충돌 방지) -->
+                            <h3 class="text-3xl font-black mb-2 text-glow-sm" 
                                 :class="gachaResultCard.type === 'joker_card' ? 'text-purple-400' : 'text-cyan-400'"
                                 x-text="gachaResultCard.type === 'joker_card' ? 'SUPER RARE!' : 'NEW OBJEKT!'">
                             </h3>
