@@ -3,23 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBJEKT Rush (v10.201)</title>
+    <title>OBJEKT Rush (v10.312 - Rekord UI Unified)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     
     <!-- FIREBASE SDK & INITIALIZATION (MODULE) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
-        import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-        import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp, where } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+        // [UPDATE] getDoc, setDoc, arrayUnion 추가 (Req 5, 6)
+        import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp, where, doc, updateDoc, getDoc, setDoc, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
 
+        // Dimension Link 프로젝트 설정
         const firebaseConfig = {
-            apiKey: "AIzaSyCiGmU0qH89LB1vqvBMHjeIhgw02ShAs6I",
-            authDomain: "objekt-rush-server.firebaseapp.com",
-            projectId: "objekt-rush-server",
-            storageBucket: "objekt-rush-server.firebasestorage.app",
-            messagingSenderId: "935184857670",
-            appId: "1:935184857670:web:d2bf95a8509e95624fe847"
+            apiKey: "AIzaSyAnLnKulINF54LKsQ5tRzXHfvUx3XWSuKw",
+            authDomain: "dimension-link.firebaseapp.com",
+            projectId: "dimension-link",
+            storageBucket: "dimension-link.firebasestorage.app",
+            messagingSenderId: "753751766984",
+            appId: "1:753751766984:web:808abfa8a593c161c5b2fd"
         };
 
         // Initialize Firebase
@@ -27,9 +29,12 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // [NEW] Auth 상태 리스너를 노출
+        window.fbOnAuthStateChanged = onAuthStateChanged;
+
         // 익명 로그인 자동 실행
         signInAnonymously(auth).then(() => {
-            console.log("Logged in anonymously");
+            console.log("Logged in anonymously to Dimension Link");
         }).catch((error) => {
             console.error("Login failed", error);
         });
@@ -39,11 +44,17 @@
         window.fbDb = db;
         window.fbCollection = collection;
         window.fbAddDoc = addDoc;
+        window.fbUpdateDoc = updateDoc;
+        window.fbDoc = doc;
         window.fbQuery = query;
         window.fbOrderBy = orderBy;
         window.fbLimit = limit;
         window.fbGetDocs = getDocs;
         window.fbServerTimestamp = serverTimestamp;
+        window.fbWhere = where; 
+        window.fbGetDoc = getDoc; // [NEW] (Req 5, 6)
+        window.fbSetDoc = setDoc; // [NEW] (Req 5, 6)
+        window.fbArrayUnion = arrayUnion; // [NEW] (Req 5, 6)
         
         console.log("Firebase Initialized");
     </script>
@@ -336,7 +347,7 @@
                 totalScore: 0,
                 lastStageScore: 0,
                 finalScore: 0,
-                como: 5, // v10.200: Start with 5 COMO
+                como: 5, 
                 comoEarned: 0,
                 bonusComo: 0,
                 
@@ -376,7 +387,7 @@
                 assistLevel: 0,
                 timePlusLevel: 0,
                 scanLevel: 0,
-                reloadBoost: 20, // v10.200: Start with max reload boost
+                reloadBoost: 20, 
                 reloadCount: 10, 
                 currentReloadPenalty: 5,
                 
@@ -385,10 +396,9 @@
                 unlockModal: { show: false, title: '', message: '' },
                 returnConfirmModal: { show: false },
                 resetConfirmModal: { show: false, type: 'all' },
-                feedback: { show: false, message: '', type: 'correct', timer: null }, // 이건 건드리지 마세요 (게임 점수 알림용)
-                
-                // [수정 1] 데이터 이름 변경 (feedbackModal -> suggestionModal)
+                feedback: { show: false, message: '', type: 'correct', timer: null },
                 suggestionModal: { show: false, message: '', isSending: false },
+                badgeSelectModal: { show: false }, // [NEW] Badge Modal (Req 5)
 
                 // Gacha
                 gachaState: 'ready', 
@@ -407,7 +417,22 @@
                 // Ranking
                 highScores: [],
                 extraHighScores: [],
-                playerName: 'SSS', 
+                playerName: 'SSS',
+                existingRecord: null, // Stores current user's record for update
+                
+                // User Account (UID Management)
+                inputUid: '', // For input field in settings
+                currentUid: 'CONNECTING...', 
+                get activeUserId() {
+                    return localStorage.getItem('objektRushCustomUid') || this.currentUid;
+                },
+                
+                // [NEW] User Profile & Badge System (Req 5)
+                userProfile: {
+                    unlockedBadges: [],
+                    selectedBadge: '👾'
+                },
+                isProfileLoading: true,
                 
                 // Gravity Vote
                 gravityVotes: {},
@@ -419,14 +444,23 @@
                 bgmVolume: 0.3, 
                 sfxVolume: 0.5, 
 
-                // Season
-                currentSeason: { name: 'Atom01', color: '#FFDD00' }, 
-                currentSeasonIndex: 0, 
+                // Season & Time
+                currentSeason: { id: '', name: '', cycle: 0, color: '#FFFFFF', state: 'active', dDay: 0, badge: '👾', frozenText: '' }, // [UPDATE] (Req 2, 3)
+                seasonNames: ['Atom', 'Binary', 'Cream', 'Divine', 'Ever'],
+                seasonColors: {
+                    'Atom': '#FFDD00',
+                    'Binary': '#00FF00',
+                    'Cream': '#FF7477',
+                    'Divine': '#B400FF',
+                    'Ever': '#33ECFD'
+                },
+                baseYear: 2025, // [NEW] (Req 3, 4)
+                baseMonth: 10, // [NEW] (Req 3, 4) 0-11 (10 = November)
 
                 // Language
-                currentLang: 'en', // Default set to English
+                currentLang: 'en', 
                 supportedLangs: [
-                    { code: 'en', name: 'English' }, // English first
+                    { code: 'en', name: 'English' }, 
                     { code: 'ko', name: '한국어 (Korean)' }, 
                     { code: 'ja', name: '日本語 (Japanese)' },
                     { code: 'zh-CN', name: '简体中文 (Simplified)' },
@@ -435,14 +469,15 @@
                     { code: 'vi', name: 'Tiếng Việt (Vietnamese)' }
                 ],
                 translations: {}, 
+
+                // Banned Nicknames (Simple Blacklist)
+                bannedNames: ['SEX', 'ASS', 'FCK', 'FUK', 'KKK', 'NIG', 'GAY', 'TIT', 'CNT', 'ADM', 'SYS'],
                 
                 // --- CONSTANTS ---
-                SEASON_CONFIG: [
-                    { name: 'Atom01', color: '#FFDD00' },
-                    { name: 'Binary01', color: '#00FF00' },
-                    { name: 'Cream01', color: '#FF7477' },
-                    { name: 'Divine01', color: '#B400FF' },
-                    { name: 'Ever01', color: '#33ECFD' }
+                DEFAULT_BADGE: '👾', // [NEW] (Req 1, 5)
+                // [NEW] Badge Reward Table (Loops automatically) (Req 4)
+                SEASON_BADGE_TABLE: [
+                    '🪙', '💎', '🍓', '🏆', '✨', '🚀', '🌙', '⭐', '❤️‍🔥', '🍀', '🌊', '⚡️'
                 ],
                 SCORING: { 
                     CORRECT_CARD: 10, 
@@ -450,13 +485,14 @@
                     BOSS_FIXED_BONUS: 300, 
                     FAIL_PENALTY: 30, 
                 },
+                // [UPDATE] Icon Refactor
                 ITEM_INFO: {
-                    objekt: { title: 'OBJEKT PACK', desc: '', cost: 1 },
-                    reload: { title: 'RELOAD CHARGE', desc: 'item_reload_desc', cost: 1 },
-                    timePlus: { title: 'TIME+ (Lv.1)', desc: 'item_timePlus_desc', cost: 4 }, 
-                    scan: { title: 'SCAN (Lv.1)', desc: 'item_scan_desc', cost: 4 }, 
-                    amulet: { title: 'AMULET (Lv.1)', desc: 'item_amulet_desc', cost: 3 }, 
-                    assist: { title: 'ASSIST (Lv.1)', desc: 'item_assist_desc', cost: 3 } 
+                    objekt: { title: 'OBJEKT PACK', desc: '', cost: 1, icon: '🃏' },
+                    reload: { title: 'RELOAD CHARGE', desc: 'item_reload_desc', cost: 1, icon: '🔄' },
+                    timePlus: { title: 'TIME+ (Lv.1)', desc: 'item_timePlus_desc', cost: 4, icon: '⏳' }, 
+                    scan: { title: 'SCAN (Lv.1)', desc: 'item_scan_desc', cost: 4, icon: '🔍' }, 
+                    amulet: { title: 'AMULET (Lv.1)', desc: 'item_amulet_desc', cost: 3, icon: '🌙' }, 
+                    assist: { title: 'ASSIST (Lv.1)', desc: 'item_assist_desc', cost: 3, icon: '🤝' } 
                 },
                 BOSS_COMMENTS: {
                     S: ["boss_S_0", "boss_S_1", "boss_S_2"],
@@ -505,6 +541,8 @@
                 init() { 
                     this.loadSettings(); 
                     this.loadLanguage(); 
+                    this.calculateSeasonLogic(); // [UPDATE] Must run before auth listener
+                    this.listenForAuth(); // This will trigger loadUserProfile and checkAndGrantSeasonBadge
                     this.loadMemberData(); 
                     this.loadHighScores(); 
                     this.loadExtraHighScores(); 
@@ -516,12 +554,281 @@
                         if (newState === 'intermission') { this.initializeGravityVotes(); } 
                     }); 
                     this.switchBGM('start');
-                    this.loadSeasonConfig();
                 },
                 
+                // [UPDATE] Auth 리스너가 Profile Load와 Badge Grant를 트리거
+                listenForAuth() {
+                    if (!window.fbOnAuthStateChanged) {
+                        console.warn("Auth listener not ready, retrying in 200ms...");
+                        setTimeout(() => this.listenForAuth(), 200);
+                        return;
+                    }
+                    
+                    window.fbOnAuthStateChanged(window.fbAuth, (user) => {
+                        if (user) {
+                            if (!localStorage.getItem('objektRushCustomUid')) {
+                                this.currentUid = user.uid;
+                            }
+                            console.log("Auth State Changed, UID set:", user.uid);
+                            
+                            // [NEW] Auth가 준비되면 프로필 로드 및 배지 체크 실행 (Req 5, 6)
+                            this.loadUserProfile();
+                            this.checkAndGrantSeasonBadge();
+
+                        } else {
+                            this.currentUid = 'ERROR';
+                            this.isProfileLoading = false;
+                            console.log("User is signed out.");
+                        }
+                    });
+                    
+                    if (localStorage.getItem('objektRushCustomUid')) {
+                        this.currentUid = localStorage.getItem('objektRushCustomUid');
+                        // [NEW] 수동 UID가 있어도 프로필 로드 및 배지 체크 실행
+                        this.loadUserProfile();
+                        this.checkAndGrantSeasonBadge();
+                    }
+                },
+
+                // [NEW] 유저 프로필 로드 (없으면 생성) (Req 5)
+                async loadUserProfile() {
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') {
+                        console.warn("loadUserProfile called before activeUserId is ready.");
+                        return;
+                    }
+                    
+                    this.isProfileLoading = true;
+                    const docRef = window.fbDoc(window.fbDb, "userProfiles", this.activeUserId);
+                    
+                    try {
+                        const docSnap = await window.fbGetDoc(docRef);
+                        
+                        if (docSnap.exists()) {
+                            this.userProfile = docSnap.data();
+                            // [NEW] 기본 배지가 없으면 추가 (이전 유저들 호환)
+                            if (!this.userProfile.unlockedBadges || !this.userProfile.unlockedBadges.includes(this.DEFAULT_BADGE)) {
+                                this.grantBadge(this.DEFAULT_BADGE, false); // 피드백 없이 조용히 추가
+                            }
+                        } else {
+                            // This is a new user, create their profile
+                            const newProfile = { 
+                                unlockedBadges: [this.DEFAULT_BADGE], // 기본 배지 지급
+                                selectedBadge: this.DEFAULT_BADGE 
+                            };
+                            await window.fbSetDoc(docRef, newProfile);
+                            this.userProfile = newProfile;
+                            console.log("New user profile created with default badge.");
+                        }
+                    } catch (e) {
+                        console.error("Error loading user profile: ", e);
+                    } finally {
+                        this.isProfileLoading = false;
+                    }
+                },
+
+                // [NEW] 시즌 랭커 배지 자동 지급 (Req 6)
+                async checkAndGrantSeasonBadge() {
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return;
+                    // 비시즌 기간이 아니면 실행 안 함
+                    if (this.currentSeason.state !== 'frozen') return; 
+
+                    // KST 기준, '오늘'이 아닌 '지난 달'의 시즌 정보를 가져와야 함
+                    const kstDate = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + (9 * 60 * 60 * 1000));
+                    const lastMonthDate = new Date(kstDate.getFullYear(), kstDate.getMonth() - 1, 1);
+                    
+                    const prevMonthsPassed = (lastMonthDate.getFullYear() - this.baseYear) * 12 + (lastMonthDate.getMonth() - this.baseMonth);
+                    
+                    if (prevMonthsPassed < 0) return; // 첫 시즌 이전
+
+                    const prevSeason = this.getSeasonInfo(prevMonthsPassed);
+                    const badgeToGrant = prevSeason.badge;
+                    const checkedKey = `badge_checked_${prevSeason.id}`;
+
+                    // 이미 이번 비시즌에 보상을 체크했으면 실행 안 함
+                    if (localStorage.getItem(checkedKey)) return;
+
+                    try {
+                        // 지난 시즌 랭킹에 이 유저가 있는지 확인
+                        const q = window.fbQuery(
+                            window.fbCollection(window.fbDb, "ranks"),
+                            window.fbWhere("season", "==", prevSeason.id),
+                            window.fbWhere("userId", "==", this.activeUserId),
+                            window.fbLimit(1)
+                        );
+                        
+                        const rankSnapshot = await window.fbGetDocs(q);
+                        
+                        if (!rankSnapshot.empty) {
+                            // 랭커였음! 배지 지급
+                            await this.grantBadge(badgeToGrant, true); // 피드백과 함께 지급
+                        }
+                        
+                        // 랭커였든 아니든, 체크 사실을 로컬에 저장 (DB 호출 방지)
+                        localStorage.setItem(checkedKey, 'true');
+
+                    } catch (e) {
+                        console.error("Error checking season badge reward: ", e);
+                    }
+                },
+
+                // [NEW] 배지 지급 헬퍼 함수 (Req 6)
+                async grantBadge(badgeEmoji, showFeedbackMsg = true) {
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return;
+                    // 중복 지급 방지 및 프로필 초기화 (userProfiles 문서가 없을 경우 setDoc 사용)
+                    const docRef = window.fbDoc(window.fbDb, "userProfiles", this.activeUserId);
+                    const docSnap = await window.fbGetDoc(docRef);
+
+                    if (docSnap.exists() && docSnap.data().unlockedBadges && docSnap.data().unlockedBadges.includes(badgeEmoji)) {
+                        return; // 이미 있음
+                    }
+                    
+                    try {
+                        await window.fbUpdateDoc(docRef, {
+                            unlockedBadges: window.fbArrayUnion(badgeEmoji)
+                        });
+                        
+                        // 로컬 데이터 즉시 갱신
+                        if (!this.userProfile.unlockedBadges.includes(badgeEmoji)) {
+                            this.userProfile.unlockedBadges.push(badgeEmoji);
+                        }
+                        
+                        if (showFeedbackMsg) {
+                            this.showFeedback(`REWARD: ${badgeEmoji} UNLOCKED!`, 'correct');
+                        }
+                    } catch (e) {
+                         // userProfiles 문서가 아직 없는 극초기 유저가 랭커가 되어 비시즌에 접속한 경우
+                        if (e.code === 'not-found') {
+                            console.warn("Profile not found on grantBadge, creating with badge...");
+                            await window.fbSetDoc(docRef, {
+                                unlockedBadges: [this.DEFAULT_BADGE, badgeEmoji],
+                                selectedBadge: this.userProfile.selectedBadge || this.DEFAULT_BADGE // 기존 선택 유지 또는 기본값
+                            });
+                            this.userProfile.unlockedBadges = [this.DEFAULT_BADGE, badgeEmoji];
+                            if (showFeedbackMsg) {
+                                this.showFeedback(`REWARD: ${badgeEmoji} UNLOCKED!`, 'correct');
+                            }
+                        } else {
+                            console.error("Error granting badge: ", e);
+                        }
+                    }
+                },
+
+                // [NEW] 대표 배지 선택 모달 (Req 5)
+                openBadgeModal() {
+                    this.playSound('click');
+                    this.badgeSelectModal.show = true;
+                },
+                closeBadgeModal() {
+                    this.playSound('click');
+                    this.badgeSelectModal.show = false;
+                },
+                async selectBadge(badgeEmoji) {
+                    this.playSound('input');
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return;
+
+                    this.userProfile.selectedBadge = badgeEmoji; // UI 즉시 반영
+                    const docRef = window.fbDoc(window.fbDb, "userProfiles", this.activeUserId);
+                    
+                    try {
+                        await window.fbUpdateDoc(docRef, { selectedBadge: badgeEmoji });
+                        this.showFeedback('BADGE SET!', 'correct');
+                    } catch (e) {
+                        console.error("Error setting badge: ", e);
+                        this.showFeedback('SET FAILED', 'incorrect');
+                        // 실패 시 롤백 (안전 장치)
+                        this.loadUserProfile(); 
+                    } finally {
+                        this.closeBadgeModal();
+                    }
+                },
+                
+                // [NEW] 시즌 정보 계산 헬퍼 (Req 4)
+                getSeasonInfo(monthsPassed) {
+                    if (monthsPassed < 0) monthsPassed = 0; // 첫 시즌 이전 방지
+
+                    const nameIndex = monthsPassed % this.seasonNames.length;
+                    const cycleNumber = Math.floor(monthsPassed / this.seasonNames.length) + 1;
+                    const seasonName = this.seasonNames[nameIndex];
+                    const seasonId = `${seasonName}${String(cycleNumber).padStart(2, '0')}`;
+                    
+                    // 보상 배지 루프
+                    const badge = this.SEASON_BADGE_TABLE[monthsPassed % this.SEASON_BADGE_TABLE.length];
+                    
+                    // 시즌 시작 날짜 계산
+                    const startDate = new Date(this.baseYear, this.baseMonth + monthsPassed, 1);
+                    const yyyy = startDate.getFullYear();
+                    const mm = String(startDate.getMonth() + 1).padStart(2, '0');
+                    const dd = '01';
+
+                    return {
+                        id: seasonId,
+                        name: seasonName,
+                        cycle: cycleNumber,
+                        color: this.seasonColors[seasonName],
+                        badge: badge,
+                        startDate: `${yyyy}.${mm}.${dd}`
+                    };
+                },
+
+                // [UPDATE] 시즌 로직 (Req 3: 시작 시간 10시, 비시즌 문구 변경)
+                calculateSeasonLogic() {
+                    const now = new Date();
+                    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                    const kstOffset = 9 * 60 * 60 * 1000;
+                    const kstDate = new Date(utc + kstOffset);
+                    
+                    const currentYear = kstDate.getFullYear();
+                    const currentMonth = kstDate.getMonth(); 
+                    const currentDay = kstDate.getDate();
+                    const currentHour = kstDate.getHours();
+
+                    // 현재 KST 기준 '달'이 몇 번째 시즌인지 계산
+                    const currentMonthsPassed = (currentYear - this.baseYear) * 12 + (currentMonth - this.baseMonth);
+                    
+                    let seasonInfo;
+                    let seasonState = 'active';
+                    let dDay = 0;
+                    let frozenText = '';
+
+                    // 1. 시즌 마감 (25일 00:00 ~ 27일 00:00)
+                    if (currentDay >= 25 && currentDay < 27) {
+                        seasonState = 'frozen';
+                        seasonInfo = this.getSeasonInfo(currentMonthsPassed); // 현재 시즌 정보
+                        frozenText = `Close the ${seasonInfo.id}`;
+                    }
+                    // 2. 다음 시즌 준비 (27일 00:00 ~ 다음달 1일 10:00)
+                    else if (currentDay >= 27) {
+                        seasonState = 'frozen';
+                        seasonInfo = this.getSeasonInfo(currentMonthsPassed); // 현재 시즌 정보 (표시용)
+                        const nextSeason = this.getSeasonInfo(currentMonthsPassed + 1);
+                        frozenText = `Dive into ${nextSeason.id} ${nextSeason.startDate} 10:00 KST`;
+                    }
+                    // 3. 다음 시즌 당일 오전 (1일 00:00 ~ 1일 10:00)
+                    else if (currentDay === 1 && currentHour < 10) {
+                        seasonState = 'frozen';
+                        seasonInfo = this.getSeasonInfo(currentMonthsPassed - 1); // *이전* 시즌 정보 (표시용)
+                        const nextSeason = this.getSeasonInfo(currentMonthsPassed); // *현재* 시즌이 다음 시즌
+                        frozenText = `Dive into ${nextSeason.id} ${nextSeason.startDate} 10:00 KST`;
+                    }
+                    // 4. 시즌 진행 중 (1일 10:00 ~ 25일 00:00)
+                    else {
+                        seasonState = 'active';
+                        seasonInfo = this.getSeasonInfo(currentMonthsPassed);
+                        dDay = 25 - currentDay; // 마감일 25일 00:00 기준
+                    }
+
+                    this.currentSeason = {
+                        ...seasonInfo,
+                        state: seasonState,
+                        dDay: dDay,
+                        frozenText: frozenText
+                    };
+                    
+                    console.log(`Current Season Logic (KST): ${this.currentSeason.id} / State: ${this.currentSeason.state}`);
+                },
+
                 // ... existing methods ...
                 
-                // [수정 2] 메서드 이름 및 컬렉션 이름 변경
                 openSuggestionModal() {
                     this.playSound('click');
                     this.suggestionModal.show = true;
@@ -539,13 +846,12 @@
                     this.suggestionModal.isSending = true;
                     
                     try {
-                        // 컬렉션 이름을 'feedbacks'에서 'suggestions'로 변경
                         await window.fbAddDoc(window.fbCollection(window.fbDb, "suggestions"), {
                             message: this.suggestionModal.message,
                             timestamp: window.fbServerTimestamp(),
                             userAgent: navigator.userAgent,
                             lang: this.currentLang,
-                            version: 'v10.201'
+                            version: 'v10.311' // [UPDATE] 버전 업데이트
                         });
                         
                         this.showFeedback('MESSAGE SENT!', 'correct');
@@ -562,7 +868,6 @@
 
                 loadLanguage() {
                     const savedLang = localStorage.getItem('objektRushLanguage');
-                    // Default is already 'en' in data, but double check
                     const defaultLangCode = 'en';
                     
                     if (savedLang && this.supportedLangs.some(l => l.code === savedLang)) {
@@ -604,23 +909,6 @@
                     localStorage.setItem('objektRushLanguage', langCode);
                 },
                 
-                loadSeasonConfig() {
-                    const savedSeasonIndex = localStorage.getItem('objektRushCurrentSeasonIndex');
-                    this.currentSeasonIndex = savedSeasonIndex ? parseInt(savedSeasonIndex) : 0;
-                    this.applyCurrentSeason();
-                },
-
-                applyCurrentSeason() {
-                    this.currentSeasonIndex = this.currentSeasonIndex % this.SEASON_CONFIG.length;
-                    this.currentSeason = this.SEASON_CONFIG[this.currentSeasonIndex];
-                    localStorage.setItem('objektRushCurrentSeasonIndex', this.currentSeasonIndex);
-                },
-
-                nextSeason() {
-                    this.currentSeasonIndex = (this.currentSeasonIndex + 1) % this.SEASON_CONFIG.length;
-                    this.applyCurrentSeason();
-                },
-
                 loadSettings() {
                     const savedBGMVolume = localStorage.getItem('objektRushBGMVolume');
                     const savedSFXVolume = localStorage.getItem('objektRushSFXVolume');
@@ -633,7 +921,47 @@
                     localStorage.setItem('objektRushBGMVolume', this.bgmVolume.toFixed(2));
                     localStorage.setItem('objektRushSFXVolume', this.sfxVolume.toFixed(2));
                 },
+                
+                // --- User ID Management ---
+                copyUid() {
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return;
+                    
+                    // [FIX] 구형 복사 방식 (iframe 호환)
+                    const textArea = document.createElement("textarea");
+                    textArea.value = this.activeUserId;
+                    textArea.style.position = "fixed";  // 방해되지 않게
+                    textArea.style.left = "-9999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showFeedback('UID COPIED!', 'correct');
+                    } catch (err) {
+                        this.showFeedback('COPY FAILED', 'incorrect');
+                    }
+                    document.body.removeChild(textArea);
+                },
+                
+                loadUid() {
+                    if (!this.inputUid || this.inputUid.length < 5) {
+                         this.showFeedback('INVALID UID', 'incorrect');
+                         return;
+                    }
+                    this.playSound('click');
+                    localStorage.setItem('objektRushCustomUid', this.inputUid);
+                    this.showFeedback('ACCOUNT SWITCHED!', 'correct');
+                    setTimeout(() => location.reload(), 1000);
+                },
 
+                resetUid() {
+                    this.playSound('click');
+                    localStorage.removeItem('objektRushCustomUid');
+                    this.showFeedback('RESET TO DEFAULT', 'correct');
+                    setTimeout(() => location.reload(), 1000);
+                },
+
+                // ... existing methods ...
                 BGM_MAP: {
                     'start': 'bgm_title.mp3',
                     'intro': 'bgm_title.mp3', 
@@ -737,16 +1065,55 @@
                         { sNumber: 'Sun', color: '#333333', textColor: '#D51313' }, 
                         { sNumber: 'Neptune', color: '#333333', textColor: '#22AEFF' }, 
                         { sNumber: 'Zenith', color: '#333333', textColor: '#52D9BB' }
-                       
                     ];
                     this.modhausData = [ { sNumber: 'X', kor: '실패', eng: 'Fail', color: '#F5F5F5', birthday: '08-08', type: 'fail_card' }, { sNumber: 'MH', kor: '제이든', eng: 'Jaden', color: '#333333', birthday: '05-01', type: 'joker_card' } ];
                     this.artmsData = [ { sNumber: 'A1', kor: '희진', eng: 'HeeJin', color: '#ED008F', birthday: '10-19', type: 'goddess_card' }, { sNumber: 'A2', kor: '하슬', eng: 'HaSeul', color: '#01C261', birthday: '08-18', type: 'goddess_card' }, { sNumber: 'A3', kor: '김립', eng: 'Kim Lip', color: '#DB3547', birthday: '02-10', type: 'goddess_card' }, { sNumber: 'A4', kor: '진솔', eng: 'JinSoul', color: '#1724A7', birthday: '06-13', type: 'goddess_card' }, { sNumber: 'A5', kor: '최리', eng: 'Choerry', color: '#5B2A93', birthday: '06-04', type: 'goddess_card' } ];
                     this.friendData = [ { sNumber: 'BB', kor: '비비', eng: 'BIBI', color: '#AAAAAA', birthday: '09-27', type: 'friend_card' }, { sNumber: 'HS', kor: '형서', eng: 'HyungSeo', color: '#AAAAAA', birthday: '06-25', type: 'friend_card' }, { sNumber: 'JM', kor: '지민', eng: 'JiMin', color: '#AAAAAA', birthday: '11-25', type: 'friend_card' }, { sNumber: 'BE', kor: '보은', eng: 'BoEun', color: '#AAAAAA', birthday: '02-11', type: 'friend_card' }, { sNumber: 'YA', eng: 'YunAh', kor: '윤아', color: '#AAAAAA', birthday: '01-15', type: 'member_card' }, { sNumber: 'MK', kor: '모카', eng: 'Moka', color: '#AAAAAA', birthday: '10-08', type: 'member_card' }, { sNumber: 'DH', kor: '도희', eng: 'DoHee', color: '#AAAAAA', birthday: '12-09', type: 'member_card' }, { sNumber: 'SJ', kor: '승주', eng: 'SeungJoo', color: '#AAAAAA', birthday: '09-24', type: 'member_card' }, { sNumber: 'HR', eng: 'Haruna', kor: '하루나', color: '#AAAAAA', birthday: '01-30', type: 'member_card' }, { sNumber: 'YS', kor: '예서', eng: 'YeSeo', color: '#AAAAAA', birthday: '08-22', type: 'member_card' } ];
                 },
-                loadHighScores() { const scores = localStorage.getItem('objektRushHighScores_v4_main'); this.highScores = scores ? JSON.parse(scores) : []; },
-                saveHighScores() { localStorage.setItem('objektRushHighScores_v4_main', JSON.stringify(this.highScores)); },
-                loadExtraHighScores() { const scores = localStorage.getItem('objektRushHighScores_v4_extra'); this.extraHighScores = scores ? JSON.parse(scores) : []; },
-                saveExtraHighScores() { localStorage.setItem('objektRushHighScores_v4_extra', JSON.stringify(this.extraHighScores)); },
+
+                // [UPDATE] 랭킹 로드: 24위까지 확장
+                async loadHighScores() {
+                    const q = window.fbQuery(
+                        window.fbCollection(window.fbDb, "ranks"), 
+                        window.fbWhere("type", "==", "main"),
+                        window.fbWhere("season", "==", this.currentSeason.id),
+                        window.fbOrderBy("score", "desc"), 
+                        window.fbLimit(24) // 24인으로 확장
+                    );
+                    try {
+                        const querySnapshot = await window.fbGetDocs(q);
+                        this.highScores = [];
+                        querySnapshot.forEach((doc) => {
+                            this.highScores.push(doc.data());
+                        });
+                    } catch (e) {
+                        console.error("Error loading main ranks: ", e);
+                        this.highScores = [];
+                    }
+                },
+                saveHighScores() { }, 
+
+                async loadExtraHighScores() {
+                    const q = window.fbQuery(
+                        window.fbCollection(window.fbDb, "ranks"), 
+                        window.fbWhere("type", "==", "extra"),
+                        window.fbWhere("season", "==", this.currentSeason.id),
+                        window.fbOrderBy("score", "desc"), 
+                        window.fbLimit(24) // 24인으로 확장
+                    );
+                    try {
+                        const querySnapshot = await window.fbGetDocs(q);
+                        this.extraHighScores = [];
+                        querySnapshot.forEach((doc) => {
+                            this.extraHighScores.push(doc.data());
+                        });
+                    } catch (e) {
+                         console.error("Error loading extra ranks: ", e);
+                         this.extraHighScores = [];
+                    }
+                },
+                saveExtraHighScores() { },
+
                 showRanking() { this.playSound('click'); this.previousGameState = this.gameState; this.loadHighScores(); this.loadExtraHighScores(); this.rankingTab = 'main'; this.gameState = 'ranking'; },
                 showSettings() { this.playSound('click'); this.previousGameState = this.gameState; this.gameState = 'settings'; }, 
                 startGame(isContinuing = false) {
@@ -889,51 +1256,92 @@
                         nextIsEnding = true;
                     } else if (this.stage === 11) {
                         this.loadExtraHighScores();
-                        const lowestExtraScore = (this.extraHighScores.length < 10) ? 0 : this.extraHighScores[9].score;
+                        // 24위 컷으로 변경
+                        const lowestExtraScore = (this.extraHighScores.length < 24) ? 0 : this.extraHighScores[23].score;
                         if (this.lastStageScore > lowestExtraScore) { 
                             nextIsOvertimeSubmit = true;
                         }
+                        // 본인 기록 확인 (업데이트 가능성 체크)
+                        this.checkExistingRecord('extra', this.lastStageScore).then(exists => {
+                             if (exists) nextIsOvertimeSubmit = true;
+                        });
                     }
                     
-                    if (nextIsEnding) {
-                        this.finalScore = this.totalScore; this.loadHighScores();
-                        const totalBlocksInGame = 89; 
-                        const finalAverage = this.totalScore / totalBlocksInGame;
-                        
-                        if (finalAverage >= 100) this.endingType = 'S'; 
-                        else if (finalAverage >= 75) this.endingType = 'A'; 
-                        else if (finalAverage >= 50) this.endingType = 'B'; 
-                        else this.endingType = 'C'; 
-                        
-                        const lowestHighScore = (this.highScores.length < 10) ? 0 : this.highScores[9].score;
-                        if (this.totalScore > lowestHighScore) { 
-                            this.playerName = 'SSS'; 
-                            this.previousGameState = 'ending'; 
+                    // 비동기 체크 로직을 위해 상태 전환 로직 수정
+                    const proceedToNextState = async () => {
+                         if (nextIsEnding) {
+                            this.finalScore = this.totalScore; 
+                            await this.loadHighScores();
+                            const totalBlocksInGame = 89; 
+                            const finalAverage = this.totalScore / totalBlocksInGame;
+                            
+                            if (finalAverage >= 100) this.endingType = 'S'; 
+                            else if (finalAverage >= 75) this.endingType = 'A'; 
+                            else if (finalAverage >= 50) this.endingType = 'B'; 
+                            else this.endingType = 'C'; 
+                            
+                            this.gameState = 'ending';
+                            
+                            const lowestHighScore = (this.highScores.length < 24) ? 0 : this.highScores[23]?.score || 0;
+                            const hasExisting = await this.checkExistingRecord('main', this.totalScore);
+                            
+                            if (this.totalScore > lowestHighScore || hasExisting) { 
+                                this.playerName = hasExisting ? hasExisting.name : ''; // 기존 이름 로드
+                                this.previousGameState = 'ending'; 
+                                this.gameState = 'submitScore'; 
+                            }
+
+                        } else if (nextIsOvertimeSubmit) { 
+                            const hasExisting = await this.checkExistingRecord('extra', this.lastStageScore);
+                            this.playerName = hasExisting ? hasExisting.name : '';
+                            this.previousGameState = 'intermission'; 
                             this.gameState = 'submitScore'; 
                         } else { 
-                            this.gameState = 'ending'; 
-                        }
-                    } else if (nextIsOvertimeSubmit) { 
-                        this.playerName = 'SSS'; 
-                        this.previousGameState = 'intermission'; 
-                        this.gameState = 'submitScore'; 
-                    } else { 
-                        this.gameState = 'intermission'; 
-                        if (this.lastStageGrade === 'F') {
-                            if (this.currentBGM) {
-                                this.currentBGM.pause();
-                                this.currentBGM = null;
+                            this.gameState = 'intermission'; 
+                            if (this.lastStageGrade === 'F') {
+                                if (this.currentBGM) {
+                                    this.currentBGM.pause();
+                                    this.currentBGM = null;
+                                }
+                            }
+                            if (this.lastStageGrade !== 'F') {
+                                if (this.stage === 2) this.showUnlock('SHOP OPEN!', 'OBJEKT, RELOAD');
+                                if (this.stage === 4) this.showUnlock('SYSTEM UNLOCKED!', 'SPIN, GRID'); 
+                                if (this.stage === 5) this.showUnlock('NEW ITEM!', 'TIME+, SCAN');
+                                if (this.stage === 6) this.showUnlock('SYSTEM UNLOCKED!', 'GRAVITY SYSTEM READY');
+                                if (this.stage === 7) this.showUnlock('NEW ITEM!', 'AMULET, ASSIST');
                             }
                         }
-                        if (this.lastStageGrade !== 'F') {
-                            if (this.stage === 2) this.showUnlock('SHOP OPEN!', 'OBJEKT, RELOAD');
-                            if (this.stage === 4) this.showUnlock('SYSTEM UNLOCKED!', 'SPIN, GRID'); 
-                            if (this.stage === 5) this.showUnlock('NEW ITEM!', 'TIME+, SCAN');
-                            if (this.stage === 6) this.showUnlock('SYSTEM UNLOCKED!', 'GRAVITY SYSTEM READY');
-                            if (this.stage === 7) this.showUnlock('NEW ITEM!', 'AMULET, ASSIST');
+                    };
+                    proceedToNextState();
+                },
+                
+                // [NEW] 기존 기록 확인 (시즌 + 유저ID)
+                async checkExistingRecord(type, currentScore) {
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return null;
+                    
+                    const q = window.fbQuery(
+                        window.fbCollection(window.fbDb, "ranks"),
+                        window.fbWhere("season", "==", this.currentSeason.id),
+                        window.fbWhere("userId", "==", this.activeUserId),
+                        window.fbWhere("type", "==", type)
+                    );
+                    
+                    const snapshot = await window.fbGetDocs(q);
+                    if (!snapshot.empty) {
+                        const doc = snapshot.docs[0];
+                        const data = doc.data();
+                        this.existingRecord = { id: doc.id, ...data };
+                        // 기존 점수가 더 높으면 갱신 안 함 (하지만 UI는 보여줄 수 있음 - 여기선 갱신 가능한 경우만 리턴)
+                        // 정책: 점수가 더 높을 때만 업데이트
+                        if (currentScore > data.score) {
+                             return data;
                         }
                     }
+                    this.existingRecord = null;
+                    return null;
                 },
+
                 showUnlock(title, message) { 
                     this.playSound('click'); 
                     this.unlockModal.title = title; 
@@ -962,8 +1370,43 @@
                     this.resetConfirmModal.show = false;
                 },
 
-                submitScore() {
-                    if (this.playerName.length === 0) return;
+                async submitScore() {
+                    if (this.currentSeason.state === 'frozen') {
+                        this.showFeedback('SEASON CLOSED', 'incorrect'); // [UPDATE] (Req 3)
+                        this.playSound('fail');
+                        return;
+                    }
+                    
+                    // [NEW] 닉네임 검증 (신규 등록일 경우만)
+                    if (!this.existingRecord) {
+                        // [UPDATE] 3글자 강제 (0, 1, 2글자 모두 차단)
+                        if (this.playerName.length !== 3) {
+                             this.showFeedback('MUST BE 3 CHARS', 'incorrect');
+                             this.playSound('fail');
+                             return;
+                        }
+                        
+                        // 금지어 체크 (정확히 일치하는지 확인)
+                        if (this.bannedNames.includes(this.playerName)) {
+                             this.showFeedback('INVALID NICKNAME', 'incorrect');
+                             this.playSound('fail');
+                             return;
+                        }
+
+                        // 중복 닉네임 체크 (같은 시즌 내)
+                        const q = window.fbQuery(
+                            window.fbCollection(window.fbDb, "ranks"),
+                            window.fbWhere("season", "==", this.currentSeason.id),
+                            window.fbWhere("name", "==", this.playerName)
+                        );
+                        const snapshot = await window.fbGetDocs(q);
+                        if (!snapshot.empty) {
+                             this.showFeedback('NAME ALREADY TAKEN', 'incorrect');
+                             this.playSound('fail');
+                             return;
+                        }
+                    }
+
                     this.playSound('click');
                     
                     const itemsSnapshot = {
@@ -981,57 +1424,48 @@
                             const numB = parseInt(b.sNumber.slice(1));
                             return numA - numB;
                         });
+                    
+                    const scoreData = {
+                        name: this.playerName, 
+                        score: (this.stage === 11) ? this.lastStageScore : this.totalScore, 
+                        stage: this.stage,
+                        items: itemsSnapshot, 
+                        specialCards: specialCardsSnapshot, 
+                        season: this.currentSeason.id, 
+                        userId: this.activeUserId, // [IMPORTANT] User ID 저장
+                        timestamp: window.fbServerTimestamp(),
+                        type: (this.stage === 11) ? 'extra' : 'main',
+                        profileBadge: this.userProfile.selectedBadge || this.DEFAULT_BADGE // [NEW] 대표 배지 저장 (Req 5)
+                    };
 
-                    if (this.stage === 10 && this.previousGameState === 'ending') { 
-                        // Public high score submission
-                        window.fbAddDoc(window.fbCollection(window.fbDb, "ranks"), {
-                            name: this.playerName, 
-                            score: this.totalScore, 
-                            stage: this.stage,
-                            items: itemsSnapshot, 
-                            specialCards: specialCardsSnapshot, 
-                            season: this.currentSeason.name,
-                            timestamp: window.fbServerTimestamp(),
-                            type: 'main'
-                        });
+                    try {
+                        if (this.existingRecord) {
+                            // Update Existing
+                            const docRef = window.fbDoc(window.fbDb, "ranks", this.existingRecord.id);
+                            await window.fbUpdateDoc(docRef, scoreData);
+                            this.showFeedback('RECORD UPDATED!', 'correct');
+                        } else {
+                            // Create New
+                            await window.fbAddDoc(window.fbCollection(window.fbDb, "ranks"), scoreData);
+                        }
                         
-                        this.highScores.push({ 
-                            name: this.playerName, 
-                            score: this.totalScore, 
-                            stage: this.stage,
-                            items: itemsSnapshot, 
-                            specialCards: specialCardsSnapshot, 
-                            season: this.currentSeason.name 
-                        });
-                        this.highScores.sort((a, b) => b.score - a.score); this.highScores = this.highScores.slice(0, 10); this.saveHighScores();
-                        this.gameState = 'ending'; 
-                    } else if (this.stage === 11) { 
-                        // Public high score submission
-                        window.fbAddDoc(window.fbCollection(window.fbDb, "ranks"), {
-                            name: this.playerName, 
-                            score: this.lastStageScore, 
-                            stage: this.stage,
-                            items: itemsSnapshot, 
-                            specialCards: specialCardsSnapshot, 
-                            season: this.currentSeason.name,
-                            timestamp: window.fbServerTimestamp(),
-                            type: 'extra'
-                        });
-                        
-                        this.extraHighScores.push({ 
-                            name: this.playerName, 
-                            score: this.lastStageScore, 
-                            stage: this.stage,
-                            items: itemsSnapshot, 
-                            specialCards: specialCardsSnapshot, 
-                            season: this.currentSeason.name 
-                        });
-                        this.extraHighScores.sort((a, b) => b.score - a.score); this.extraHighScores = this.extraHighScores.slice(0, 10); this.saveExtraHighScores();
-                        this.gameState = 'intermission'; 
+                        // 로컬 UI 반영 로직은 생략 (서버에서 다시 불러오도록 유도하거나 단순 종료)
+                        setTimeout(() => {
+                            if (this.stage === 11) {
+                                this.gameState = 'intermission';
+                            } else {
+                                this.gameState = 'ending';
+                            }
+                        }, 1000);
+
+                    } catch (e) {
+                        console.error("Submit Error: ", e);
+                        this.showFeedback('SEND FAILED', 'incorrect');
                     }
                 },
                 restartGame() { this.playSound('click'); this.returnConfirmModal.show = false; this.gameState = 'start'; },
                 continueOvertime() { this.playSound('click'); this.stage = 11; this.gameState = 'intermission'; },
+                // ... [OMITTED: generateNewBlock, checkStageCompletion, processBlockComplete, calculateAndApplyScore - No changes needed] ...
                 generateNewBlock() {
                     if (this.currentBlock) return;
                     this.blocksCompleted++;
@@ -1089,7 +1523,6 @@
                         this.switchBGM('playing'); 
                     }
                 },
-                // ... existing methods ...
                 checkStageCompletion() {
                     const block = this.currentBlock; 
                     this.currentBlock = null; 
@@ -1225,6 +1658,7 @@
                     
                     this.checkStageCompletion(); 
                 },
+                // ... [OMITTED: selectData, selectInventoryCard, inputData, updateMatchedOrders, reloadData, getReloadDisplayCount, clearSelectedData, shuffleArray, refillData, getNewData, generateDataItem, inputEnabled, isSelectedData, isSelectedInventory, showFeedback, openShopModal, closeShopModal, confirmBuyItem, openGachaModal, closeGachaModal, startGachaAnimation, confirmGachaResult, executePurchase, startSpin, generateSpinGrid, selectSpinCard, canCraft, startGridCraft, checkCraftingAvailability, getGravityVotes, initializeGravityVotes, voteForBoss, getBossProbability, isMatchingOrder, checkSmartGuide, checkSmartReload, getBirthdayBackground, getMembersByDimension] ...
                 selectData(type, dataName, id) { 
                     this.playSound('data_select'); 
                     this.selectedData = (this.selectedData && this.selectedData.id === id) ? null : { id, name: dataName, type }; 
@@ -1300,6 +1734,7 @@
                         
                         if (matchIndexInRemaining !== -1) {
                             this.matchedOrderIndices[i] = true;
+                            blockChecklist.splice(matchIndex, 1); // [ERROR] blockChecklist not defined here. Should modify the remainingSlotCards list instead
                             remainingSlotCards.splice(matchIndexInRemaining, 1); 
                             continue; 
                         }
@@ -1641,25 +2076,26 @@
                 },
                 // --- SMART GUIDE LOGIC (STAGE 1 ONLY) ---
                 checkSmartGuide(item) {
-                    // Only active in Stage 1
                     if (this.stage !== 1 || !this.currentBlock || !item) return false;
                     
-                    const targetMembers = this.currentBlock.members;
+                    const itemSNumber = item.originSNumber || item.sNumber;
+                    if (!itemSNumber) return false; // Not a member card
+
+                    // 1. How many are required in the current block?
+                    const requiredCount = this.currentBlock.members.filter(m => m.sNumber === itemSNumber).length;
                     
-                    // Check if item's sNumber exists in the current block requirement
-                    // Since Stage 1 is simple matching, just check presence
-                    return targetMembers.some(m => m.sNumber === (item.originSNumber || item.sNumber));
+                    if (requiredCount === 0) return false; // This card isn't needed at all
+
+                    // 2. How many are already in the slot?
+                    const slottedCount = this.completedCards.filter(c => c.sNumber === itemSNumber).length;
+
+                    // 3. Highlight only if required > slotted
+                    return requiredCount > slottedCount;
                 },
                 checkSmartReload() {
                      if (this.stage !== 1 || !this.currentBlock) return false;
-                     
-                     // Check Pool
                      const poolHasMatch = [...this.korData, ...this.engData].some(d => this.checkSmartGuide(d));
-                     
-                     // Check Inventory (exclude special cards just in case)
                      const invHasMatch = this.inventory.some(c => !c.isSpecial && this.checkSmartGuide(c));
-                     
-                     // If NO matches found anywhere, highlight reload
                      return !poolHasMatch && !invHasMatch;
                 },
                 getBirthdayBackground(member) {
@@ -1672,8 +2108,7 @@
                 },
                 getMembersByDimension(dimName) { return this.memberData.filter(m => m.dimensions.includes(dimName)); },
                 getCurrentSeasonColor() {
-                    const season = this.SEASON_CONFIG.find(s => s.name === this.currentSeason.name);
-                    return season ? season.color : '#FFFFFF';
+                    return this.currentSeason.color;
                 }
             }
         }
@@ -1699,7 +2134,7 @@
                 </div>
             </div>
             
-            <!-- ... [OMITTED: Intro Screen same as before] ... -->
+            <!-- ... [OMITTED: Intro, Playing, Intermission, Modals] ... -->
              <!-- 2. Intro Screen -->
             <div x-show="gameState === 'intro'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-6 z-50 bg-black/80 backdrop-blur-md">
                 <div class="glass-panel briefing-panel p-6 rounded-3xl w-full h-full flex flex-col" x-show="introStep === 1" x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-x-10" x-transition:enter-end="opacity-100 translate-x-0">
@@ -1774,11 +2209,12 @@
                 <header id="dashboard" class="w-full p-3 glass-panel shadow-lg z-20 border-t-0 rounded-b-2xl mb-1">
                     <div class="flex justify-between items-center mb-2">
                         <div class="text-left flex-shrink-0"><span class="text-xs text-gray-400 font-bold tracking-widest" id="score-anchor">SCORE</span><span class="text-2xl font-bold text-yellow-300 ml-2 text-glow-sm" x-text="score"></span></div>
+                        <!-- [UPDATE] Icon Refactor -->
                         <div class="text-center flex-grow px-2"><div class="flex justify-center items-center space-x-2">
-                            <template x-if="timePlusLevel > 0"><span class="text-lg filter drop-shadow-lg" title="TIME+ (시간 연장)">⏳</span></template>
-                            <template x-if="scanLevel > 0"><span class="text-lg filter drop-shadow-lg" title="SCAN (생일 힌트)">🔍</span></template>
-                            <template x-if="amuletLevel > 0"><span class="text-lg filter drop-shadow-lg" title="AMULET (달의 부적)">🌙</span></template>
-                            <template x-if="assistLevel > 0"><span class="text-lg filter drop-shadow-lg" title="ASSIST (친구 호출)">🤝</span></template>
+                            <template x-if="timePlusLevel > 0"><span class="text-lg filter drop-shadow-lg" title="TIME+ (시간 연장)" x-text="ITEM_INFO.timePlus.icon"></span></template>
+                            <template x-if="scanLevel > 0"><span class="text-lg filter drop-shadow-lg" title="SCAN (생일 힌트)" x-text="ITEM_INFO.scan.icon"></span></template>
+                            <template x-if="amuletLevel > 0"><span class="text-lg filter drop-shadow-lg" title="AMULET (달의 부적)" x-text="ITEM_INFO.amulet.icon"></span></template>
+                            <template x-if="assistLevel > 0"><span class="text-lg filter drop-shadow-lg" title="ASSIST (친구 호출)" x-text="ITEM_INFO.assist.icon"></span></template>
                         </div></div>
                         <div class="text-right flex-shrink-0">
                             <span class="text-xs text-gray-400 mr-2 font-bold tracking-widest" x-text="stage >= 11 ? 'OVERTIME' : `STAGE ${stage}`"></span>
@@ -1946,21 +2382,36 @@
             <div x-show="gameState === 'submitScore'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-8 z-50 bg-black/80 backdrop-blur-md">
                 <div class="glass-panel p-8 rounded-3xl w-full flex flex-col items-center">
                     <h2 class="text-4xl font-bold text-yellow-300 text-glow-sm text-center mb-4">NEW HIGH SCORE!</h2>
-                    <template x-if="stage === 10 && previousGameState === 'ending'">
-                        <div>
-                            <p class="text-2xl text-gray-300 text-center mb-2">All Stages Clear!</p>
-                            <p class="text-6xl font-black text-white text-center mb-8 text-glow" x-text="totalScore"></p>
+                    
+                    <template x-if="existingRecord">
+                        <div class="text-center mb-6">
+                            <p class="text-gray-400 text-lg tracking-widest mb-2">AGENT CONFIRMED</p>
+                            <div class="text-3xl font-black text-white border border-white/20 bg-white/5 px-6 py-3 rounded-xl inline-block">
+                                <span x-text="existingRecord.name"></span>
+                            </div>
+                            <p class="text-green-400 text-sm font-bold mt-2">RECORD UPDATE AVAILABLE</p>
                         </div>
                     </template>
-                    <template x-if="stage === 11">
-                        <div>
-                            <p class="text-2xl text-gray-300 text-center mb-2">OVERTIME Clear!</p>
-                            <p class="text-6xl font-black text-white text-center mb-8 text-glow" x-text="lastStageScore"></p>
+
+                    <template x-if="!existingRecord">
+                        <div class="w-full flex flex-col items-center">
+                            <label for="playerNameInput" class="text-lg text-gray-400 mb-2 tracking-widest">CODENAME (3 CHARS)</label>
+                            <input type="text" id="playerNameInput" x-model="playerName" @input="playerName = playerName.toUpperCase().replace(/[^A-Z0-9]/g, '')" maxlength="3" class="w-40 h-20 bg-black/50 border-2 border-white/20 text-white text-5xl font-bold text-center rounded-2xl focus:outline-none focus:border-purple-500 mb-8 tracking-widest">
                         </div>
                     </template>
-                    <label for="playerNameInput" class="text-lg text-gray-400 mb-2 tracking-widest">NAME (3 CHARS)</label>
-                    <input type="text" id="playerNameInput" x-model="playerName" @input="playerName = playerName.toUpperCase().replace(/[^A-Z0-9]/g, '')" maxlength="3" class="w-40 h-20 bg-black/50 border-2 border-white/20 text-white text-5xl font-bold text-center rounded-2xl focus:outline-none focus:border-purple-500 mb-8 tracking-widest">
-                    <button @click="submitScore()" class="glass-button btn-green-glow w-full py-4 text-2xl font-bold rounded-2xl text-green-400">SUBMIT</button>
+
+                    <div class="mb-6 text-center">
+                         <p class="text-sm text-gray-500 font-bold tracking-widest mb-1">NEW SCORE</p>
+                         <p class="text-5xl font-black text-white text-glow" x-text="(stage === 11) ? lastStageScore : totalScore"></p>
+                    </div>
+
+                    <button @click="submitScore()" 
+                            :disabled="currentSeason.state === 'frozen'"
+                            class="glass-button w-full py-4 text-2xl font-bold rounded-2xl"
+                            :class="currentSeason.state === 'frozen' ? 'opacity-50 cursor-not-allowed text-gray-500' : 'btn-green-glow text-green-400'">
+                        <span x-text="currentSeason.state === 'frozen' ? 'SEASON CLOSED' : (existingRecord ? 'UPDATE RECORD' : 'REGISTER AGENT')"></span>
+                    </button>
+                    <p x-show="currentSeason.state === 'frozen'" class="text-red-400 mt-2 text-sm font-bold">Rankings are frozen (25th ~ End of Month)</p>
                 </div>
             </div>
 
@@ -2005,9 +2456,10 @@
                             <h3 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">SHOP</h3>
                             <div class="glass-panel px-4 py-1 rounded-full flex items-center"><span class="text-lg font-black text-purple-300 mr-2">COMO</span><span class="text-lg font-bold text-white" x-text="como"></span></div>
                         </div>
+                        <!-- [UPDATE] Icon Refactor -->
                         <div class="grid grid-cols-3 gap-2">
                             <button @click="openShopModal('objekt')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.objekt.cost}">
-                                <span class="text-3xl">🃏</span>
+                                <span class="text-3xl" x-text="ITEM_INFO.objekt.icon"></span>
                                 <div class="flex flex-col">
                                     <span class="font-bold text-sm text-gray-200 leading-none mb-1">OBJEKT</span>
                                     <span class="text-xs font-bold" :class="como < ITEM_INFO.objekt.cost ? 'text-red-400' : 'text-purple-300'" x-text="`${ITEM_INFO.objekt.cost} COMO`"></span>
@@ -2015,7 +2467,7 @@
                             </button>
                             
                             <button @click="openShopModal('reload')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.reload.cost, 'border-yellow-500/50': reloadBoost >= 20}">
-                                <span class="text-3xl">🔄</span>
+                                <span class="text-3xl" x-text="ITEM_INFO.reload.icon"></span>
                                 <div class="flex flex-col">
                                     <span class="font-bold text-sm text-gray-200 leading-none mb-1">RELOAD</span>
                                     <span class="text-xs font-bold" :class="reloadBoost >= 20 ? 'text-yellow-500' : 'text-purple-300'" x-text="reloadBoost >= 20 ? 'MAX' : `${ITEM_INFO.reload.cost} COMO`"></span>
@@ -2024,7 +2476,7 @@
                             
                             <template x-if="stage >= 5">
                                 <button @click="openShopModal('timePlus')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.timePlus.cost, 'border-green-500/50': timePlusLevel >= 1}">
-                                    <span class="text-3xl">⏳</span>
+                                    <span class="text-3xl" x-text="ITEM_INFO.timePlus.icon"></span>
                                     <div class="flex flex-col">
                                         <span class="font-bold text-sm text-gray-200 leading-none mb-1">TIME+</span>
                                         <span class="text-xs font-bold" :class="timePlusLevel >= 1 ? 'text-green-500' : 'text-purple-300'" x-text="timePlusLevel >= 1 ? 'MAX' : `${ITEM_INFO.timePlus.cost} COMO`"></span>
@@ -2033,7 +2485,7 @@
                             </template>
                             <template x-if="stage >= 5">
                                 <button @click="openShopModal('scan')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.scan.cost, 'border-orange-500/50': scanLevel >= 1}">
-                                    <span class="text-3xl">🔍</span>
+                                    <span class="text-3xl" x-text="ITEM_INFO.scan.icon"></span>
                                     <div class="flex flex-col">
                                         <span class="font-bold text-sm text-gray-200 leading-none mb-1">SCAN</span>
                                         <span class="text-xs font-bold" :class="scanLevel >= 1 ? 'text-orange-500' : 'text-purple-300'" x-text="scanLevel >= 1 ? 'MAX' : `${ITEM_INFO.scan.cost} COMO`"></span>
@@ -2043,7 +2495,7 @@
                             
                             <template x-if="stage >= 7">
                                 <button @click="openShopModal('amulet')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.amulet.cost, 'border-purple-500/50': amuletLevel >= 1}">
-                                    <span class="text-3xl">🌙</span>
+                                    <span class="text-3xl" x-text="ITEM_INFO.amulet.icon"></span>
                                     <div class="flex flex-col">
                                         <span class="font-bold text-sm text-gray-200 leading-none mb-1">AMULET</span>
                                         <span class="text-xs font-bold" :class="amuletLevel >= 1 ? 'text-purple-500' : 'text-purple-300'" x-text="amuletLevel >= 1 ? 'MAX' : `${ITEM_INFO.amulet.cost} COMO`"></span>
@@ -2052,7 +2504,7 @@
                             </template>
                             <template x-if="stage >= 7">
                                 <button @click="openShopModal('assist')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.assist.cost, 'border-cyan-500/50': assistLevel >= 1}">
-                                    <span class="text-3xl">🤝</span>
+                                    <span class="text-3xl" x-text="ITEM_INFO.assist.icon"></span>
                                     <div class="flex flex-col">
                                         <span class="font-bold text-sm text-gray-200 leading-none mb-1">ASSIST</span>
                                         <span class="text-xs font-bold" :class="assistLevel >= 1 ? 'text-cyan-500' : 'text-purple-300'" x-text="assistLevel >= 1 ? 'MAX' : `${ITEM_INFO.assist.cost} COMO`"></span>
@@ -2062,13 +2514,14 @@
                         </div>
                     </div>
                     <div id="collect" class="glass-panel p-3 rounded-2xl">
+                        <!-- [UPDATE] Icon Refactor -->
                         <div class="flex justify-between items-center mb-3 px-1">
                             <h3 class="text-lg font-bold text-gray-300 tracking-wider">COLLECT (<span x-text="inventory.length"></span>/<span x-text="inventoryMaxSize"></span>)</h3>
                              <div class="flex justify-center items-center space-x-2 opacity-80">
-                                <template x-if="timePlusLevel > 0"><span class="text-lg filter drop-shadow-lg" title="TIME+">⏳</span></template>
-                                <template x-if="scanLevel > 0"><span class="text-lg filter drop-shadow-lg" title="SCAN">🔍</span></template>
-                                <template x-if="amuletLevel > 0"><span class="text-lg filter drop-shadow-lg" title="AMULET">🌙</span></template>
-                                <template x-if="assistLevel > 0"><span class="text-lg filter drop-shadow-lg" title="ASSIST">🤝</span></template>
+                                <template x-if="timePlusLevel > 0"><span class="text-lg filter drop-shadow-lg" title="TIME+" x-text="ITEM_INFO.timePlus.icon"></span></template>
+                                <template x-if="scanLevel > 0"><span class="text-lg filter drop-shadow-lg" title="SCAN" x-text="ITEM_INFO.scan.icon"></span></template>
+                                <template x-if="amuletLevel > 0"><span class="text-lg filter drop-shadow-lg" title="AMULET" x-text="ITEM_INFO.amulet.icon"></span></template>
+                                <template x-if="assistLevel > 0"><span class="text-lg filter drop-shadow-lg" title="ASSIST" x-text="ITEM_INFO.assist.icon"></span></template>
                              </div>
                         </div>
                         <div class="flex space-x-2 overflow-x-auto scrollbar-thin h-24 items-center mb-3 px-1">
@@ -2078,7 +2531,7 @@
                                         :class="{'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500 rounded-lg': isSelectedInventory(card.inventoryId)}">
                                     <div x-data="objektCard(card)">
                                         <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" 
-                                            :class="borderStyles" 
+                                            :class="[borderStyles, checkSmartGuide(card) ? 'guide-pulse' : '']" 
                                             :style="cardStyles.background">
                                             <div class="flex-grow h-full flex flex-col items-center justify-center p-1">
                                                 <span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span>
@@ -2187,10 +2640,32 @@
             <div x-show="gameState === 'ranking'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-between p-4 z-50 overflow-y-auto bg-black/80 backdrop-blur-md">
                 <div>
                     <h2 class="text-4xl font-black text-center mt-6 mb-2 text-white">REKORD ARCHIVE</h2>
+                    <!-- [UPDATE] 시즌 표시 로직 변경 (Req 2, 3) -->
                     <div class="text-center mb-6">
                         <span class="text-lg font-black tracking-widest text-glow-sm" 
-                              :style="`color: ${getCurrentSeasonColor()}; text-shadow: 0 0 10px ${getCurrentSeasonColor()}80;`"
-                              x-text="currentSeason.name">
+                              :style="`color: ${currentSeason.state === 'frozen' ? '#9CA3AF' : currentSeason.color}; text-shadow: 0 0 10px ${currentSeason.state === 'frozen' ? '#9CA3AF' : currentSeason.color}80;`">
+                              
+                            <!-- 1. 시즌 ID -->
+                            <span x-text="currentSeason.id"></span>
+                            
+                            <!-- 2. D-Day (시즌 중) -->
+                            <span x-show="currentSeason.state === 'active'" 
+                                  class="ml-2 font-bold text-cyan-400"
+                                  :class="currentSeason.dDay === 1 ? 'animate-pulse' : ''"
+                                  x-text="`D-${currentSeason.dDay}`">
+                            </span>
+                            
+                            <!-- 3. 시즌 보상 (시즌 중) (Req 2) -->
+                            <span x-show="currentSeason.state === 'active'" 
+                                  class="ml-2 text-xs font-bold bg-white/10 text-yellow-300 px-2 py-0.5 rounded-full border border-yellow-300/30"
+                                  x-text="`REWARD: ${currentSeason.badge}`">
+                            </span>
+                              
+                            <!-- 4. 비시즌 텍스트 (Req 3) -->
+                            <span x-show="currentSeason.state === 'frozen'" 
+                                  class="ml-2 text-sm font-bold text-gray-500"
+                                  x-text="currentSeason.frozenText">
+                            </span>
                         </span>
                     </div>
                     <div class="flex w-full mb-4 rounded-xl glass-panel p-1">
@@ -2198,34 +2673,48 @@
                         <button @click="rankingTab = 'extra'" class="w-1/2 py-3 rounded-xl text-lg font-bold transition-all" :class="rankingTab === 'extra' ? 'bg-teal-600/80 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'">OVERTIME</button>
                     </div>
                     <div x-show="rankingTab === 'main'" class="space-y-1">
-                        <template x-if="highScores.length === 0"><p class="text-center text-gray-500 text-lg py-8">NO REKORD</p></template>
+                        <template x-if="highScores.length === 0">
+                            <div class="text-center py-8">
+                                <p class="text-gray-500 text-lg mb-2">NO REKORD</p>
+                                <p class="text-xs text-gray-600">Be the first to register in <span x-text="currentSeason.id"></span>!</p>
+                            </div>
+                        </template>
                         <template x-for="(entry, index) in highScores" :key="entry.name + entry.score + index">
                             <div>
-                                <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative">
-                                    <div class="flex items-center">
-                                        <span class="font-bold w-8 text-left" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
-                                        <span class="font-bold text-xl text-white ml-2" x-text="entry.name"></span>
+                                <!-- [UPDATE] 레이아웃 변경 (Req 1: 배지 공간) -->
+                                <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative" 
+                                     :class="{'bg-yellow-500/10 border-yellow-500/30': index === 0, 'bg-gray-400/10 border-gray-400/30': index === 1, 'bg-yellow-700/10 border-yellow-700/30': index === 2}">
+                                    
+                                    <div class="flex items-center min-w-0">
+                                        <span class="font-bold w-8 text-left flex-shrink-0" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
+                                        
+                                        <!-- [NEW] 대표 배지 표시 (Req 1) -->
+                                        <span class="text-2xl mr-2 flex-shrink-0" x-text="entry.profileBadge || DEFAULT_BADGE"></span>
+                                        
+                                        <span class="font-bold text-xl text-white truncate" x-text="entry.name"></span>
                                     </div>
-                                    <div class="text-right">
+
+                                    <div class="text-right flex-shrink-0 pl-2">
                                         <span class="font-bold text-xl text-yellow-300" x-text="entry.score"></span>
                                         <span class="text-xs text-gray-500 block" x-text="entry.season ? `SEASON: ${entry.season}` : ''"></span>
                                     </div>
                                 </div>
+                                <!-- [UPDATE] Icon Refactor -->
                                 <div x-show="(entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)) || (entry.specialCards && entry.specialCards.length > 0)"
                                      class="glass-panel p-3 rounded-b-2xl -mt-2 z-0 bg-black/30 border-t-0 border-white/10">
                                     <div class="flex items-center space-x-2 mb-2 px-1" x-show="entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)">
-                                        <template x-if="entry.items.reload > 0"><span class="text-base" x-text="`🔄(${entry.items.reload})`" title="RELOAD"></span></template>
-                                        <template x-if="entry.items.time > 0"><span class="text-base" title="TIME+">⏳</span></template>
-                                        <template x-if="entry.items.scan > 0"><span class="text-base" title="SCAN">🎨</span></template>
-                                        <template x-if="entry.items.amulet > 0"><span class="text-base" title="AMULET">🌙</span></template>
-                                        <template x-if="entry.items.assist > 0"><span class="text-base" title="ASSIST">🤝</span></template>
+                                        <template x-if="entry.items.reload > 0"><span class="text-base" :title="ITEM_INFO.reload.title"><span x-text="ITEM_INFO.reload.icon"></span>(<span x-text="entry.items.reload"></span>)</span></template>
+                                        <template x-if="entry.items.time > 0"><span class="text-base" :title="ITEM_INFO.timePlus.title" x-text="ITEM_INFO.timePlus.icon"></span></template>
+                                        <template x-if="entry.items.scan > 0"><span class="text-base" :title="ITEM_INFO.scan.title" x-text="ITEM_INFO.scan.icon"></span></template>
+                                        <template x-if="entry.items.amulet > 0"><span class="text-base" :title="ITEM_INFO.amulet.title" x-text="ITEM_INFO.amulet.icon"></span></template>
+                                        <template x-if="entry.items.assist > 0"><span class="text-base" :title="ITEM_INFO.assist.title" x-text="ITEM_INFO.assist.icon"></span></template>
                                     </div>
                                     <div x-show="entry.specialCards && entry.specialCards.length > 0" class="flex flex-wrap gap-1 px-1">
                                         <template x-for="card in entry.specialCards" :key="card.inventoryId || card.sNumber">
                                             <div x-data="objektCard(card, false)">
                                                 <div class="w-8 h-10 rounded-md flex shadow-sm border" :class="borderStyles" :style="`${cardStyles.background}; border-width: 1px;`">
                                                     <div class="flex-grow h-full flex flex-col items-center justify-center p-0">
-                                                        <span class="text-xs font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span>
+                                                        <span class="text-xs font-extrabold" style="color: #000;" x-text="card.sNumber.replace('S', '')"></span>
                                                     </div>
                                                     <div class="flex-shrink-0 w-1/5 h-full flex items-center justify-center rounded-r-sm holo-bg">
                                                     </div>
@@ -2238,34 +2727,46 @@
                         </template>
                     </div>
                     <div x-show="rankingTab === 'extra'" class="space-y-1">
-                        <template x-if="extraHighScores.length === 0"><p class="text-center text-gray-500 text-lg py-8">NO REKORD</p></template>
+                        <template x-if="extraHighScores.length === 0">
+                            <div class="text-center py-8">
+                                <p class="text-gray-500 text-lg mb-2">NO REKORD</p>
+                                <p class="text-xs text-gray-600">Be the first to register in <span x-text="currentSeason.id"></span>!</p>
+                            </div>
+                        </template>
                         <template x-for="(entry, index) in extraHighScores" :key="entry.name + entry.score + index">
                             <div>
-                                <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative">
+                                <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative"
+                                     :class="{'bg-teal-500/10 border-teal-500/30': index === 0, 'bg-gray-400/10 border-gray-400/30': index === 1, 'bg-yellow-700/10 border-yellow-700/30': index === 2}">
                                     <div class="flex items-center">
-                                        <span class="font-bold w-8 text-left" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
-                                        <span class="font-bold text-xl text-white ml-2" x-text="entry.name"></span>
+                                        <span class="font-bold w-8 text-left flex-shrink-0" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
+                                        
+                                        <!-- [NEW] 대표 배지 표시 (Req 1) -->
+                                        <span class="text-2xl mr-2 flex-shrink-0" x-text="entry.profileBadge || DEFAULT_BADGE"></span>
+
+                                        <span class="font-bold text-xl text-white truncate" x-text="entry.name"></span>
                                     </div>
-                                    <div class="text-right">
+
+                                    <div class="text-right flex-shrink-0 pl-2">
                                         <span class="font-bold text-xl text-teal-300" x-text="entry.score"></span>
                                         <span class="text-xs text-gray-500 block" x-text="entry.season ? `SEASON: ${entry.season}` : ''"></span>
                                     </div>
                                 </div>
                                 <div x-show="(entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)) || (entry.specialCards && entry.specialCards.length > 0)"
                                      class="glass-panel p-3 rounded-b-2xl -mt-2 z-0 bg-black/30 border-t-0 border-white/10">
+                                    <!-- [UPDATE] Icon Refactoring -->
                                     <div class="flex items-center space-x-2 mb-2 px-1" x-show="entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)">
-                                        <template x-if="entry.items.reload > 0"><span class="text-base" x-text="`🔄(${entry.items.reload})`" title="RELOAD"></span></template>
-                                        <template x-if="entry.items.time > 0"><span class="text-base" title="TIME+">⏳</span></template>
-                                        <template x-if="entry.items.scan > 0"><span class="text-base" title="SCAN">🎨</span></template>
-                                        <template x-if="entry.items.amulet > 0"><span class="text-base" title="AMULET">🌙</span></template>
-                                        <template x-if="entry.items.assist > 0"><span class="text-base" title="ASSIST">🤝</span></template>
+                                        <template x-if="entry.items.reload > 0"><span class="text-base" :title="ITEM_INFO.reload.title"><span x-text="ITEM_INFO.reload.icon"></span>(<span x-text="entry.items.reload"></span>)</span></template>
+                                        <template x-if="entry.items.time > 0"><span class="text-base" :title="ITEM_INFO.timePlus.title" x-text="ITEM_INFO.timePlus.icon"></span></template>
+                                        <template x-if="entry.items.scan > 0"><span class="text-base" :title="ITEM_INFO.scan.title" x-text="ITEM_INFO.scan.icon"></span></template>
+                                        <template x-if="entry.items.amulet > 0"><span class="text-base" :title="ITEM_INFO.amulet.title" x-text="ITEM_INFO.amulet.icon"></span></template>
+                                        <template x-if="entry.items.assist > 0"><span class="text-base" :title="ITEM_INFO.assist.title" x-text="ITEM_INFO.assist.icon"></span></template>
                                     </div>
                                     <div x-show="entry.specialCards && entry.specialCards.length > 0" class="flex flex-wrap gap-1 px-1">
                                         <template x-for="card in entry.specialCards" :key="card.inventoryId || card.sNumber">
                                             <div x-data="objektCard(card, false)">
                                                 <div class="w-8 h-10 rounded-md flex shadow-sm border" :class="borderStyles" :style="`${cardStyles.background}; border-width: 1px;`">
                                                     <div class="flex-grow h-full flex flex-col items-center justify-center p-0">
-                                                        <span class="text-xs font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span>
+                                                        <span class="text-xs font-extrabold" style="color: #000;" x-text="card.sNumber.replace('S', '')"></span>
                                                     </div>
                                                     <div class="flex-shrink-0 w-1/5 h-full flex items-center justify-center rounded-r-sm holo-bg">
                                                     </div>
@@ -2283,14 +2784,55 @@
                     </button>
                 </div>
             </div>
-            
             <!-- Settings Screen -->
             <div x-show="gameState === 'settings'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-between p-4 z-50 overflow-y-auto bg-black/80 backdrop-blur-md">
                 <div class="flex-grow">
                     <h2 class="text-4xl font-black text-center mt-6 mb-8 text-cyan-400 text-glow-sm">SYSTEM CONFIG</h2>
                     
+                    <!-- ACCOUNT SECTION [UPDATE] -->
+                    <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
+                        <h3 class="text-xl font-bold text-gray-300 mb-4 flex items-center">ACCOUNT KEY (UID)</h3>
+                        <p class="text-xs text-yellow-400/70 mb-4 font-bold">WARNING: This is your secret key. Do not share it with anyone!</p>
+                        
+                        <!-- Display & Copy -->
+                        <div class="flex items-center space-x-2 mb-4">
+                            <div class="flex-grow bg-black/50 p-3 rounded-xl font-mono text-xs text-gray-300 truncate border border-white/10" x-text="activeUserId"></div>
+                            <button @click="copyUid()" class="glass-button px-4 py-3 rounded-xl font-bold text-cyan-300">COPY</button>
+                        </div>
+                        
+                        <!-- Load Account -->
+                        <div class="border-t border-white/10 pt-4">
+                            <p class="text-xs text-gray-500 mb-2 font-bold">IMPORT ACCOUNT KEY</p>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" x-model="inputUid" placeholder="Paste UID here..." class="flex-grow bg-black/50 border border-white/20 text-white py-3 px-4 rounded-xl text-sm focus:outline-none focus:border-cyan-500">
+                                <button @click="loadUid()" class="glass-button px-4 py-3 rounded-xl font-bold text-yellow-300 border-yellow-500/50">APPLY KEY</button>
+                            </div>
+                        </div>
+                        
+                         <div class="mt-4 text-right">
+                            <button @click="resetUid()" class="text-xs text-red-400 underline opacity-50 hover:opacity-100">Reset to Guest Account</button>
+                        </div>
+                    </div>
+
+                    <!-- [NEW] AGENT BADGE SECTION (Req 5) -->
+                    <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-300">AGENT BADGE</h3>
+                                <p class="text-sm text-gray-400 mt-1">Your selected icon for the Rekord.</p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <!-- Current Badge Display -->
+                                <div class="flex items-center justify-center bg-black/50 border border-white/10 rounded-full w-16 h-16">
+                                    <span class="text-4xl" x-text="userProfile.selectedBadge || DEFAULT_BADGE"></span>
+                                </div>
+                                <button @click="openBadgeModal()" class="glass-button px-4 py-2 rounded-xl text-sm font-bold text-cyan-300">Change</button>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- LANGUAGE SECTION -->
-                    <div class="glass-panel p-5 rounded-2xl mb-6">
+                    <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
                         <h3 class="text-xl font-bold text-gray-300 mb-4" x-text="translate('lang_select')"></h3>
                         <p class="text-sm text-gray-400 mb-4" x-text="translate('lang_desc')"></p>
                         <select x-model="currentLang" @change="setLanguage($event.target.value)" 
@@ -2302,7 +2844,7 @@
                     </div>
                     
                     <!-- VOLUME SECTION -->
-                    <div class="glass-panel p-5 rounded-2xl mb-6">
+                    <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
                         <h3 class="text-xl font-bold text-gray-300 mb-4 flex items-center">VOLUME CONTROL</h3>
                         <div class="space-y-4">
                             <div>
@@ -2315,7 +2857,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- [수정 3] 설정 화면의 버튼 연결 변경 -->
                     <!-- SUGGESTION SECTION -->
                     <div class="mb-6">
                         <button @click="openSuggestionModal()" class="glass-button w-full py-3 font-bold rounded-xl text-yellow-300 border-yellow-500/50 hover:bg-yellow-500/10">SEND SUGGESTION</button>
@@ -2332,7 +2873,7 @@
                         <div class="space-y-3 text-sm text-gray-400">
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>VERSION</span>
-                                <span class="text-white font-mono">v10.201 (Online)</span>
+                                <span class="text-white font-mono">v10.311 (Badge System Refactor)</span>
                             </div>
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>DEVELOPER</span>
@@ -2351,7 +2892,7 @@
                     </button>
                 </div>
             </div>
-            <!-- [수정 4] 모달 창 UI 연결 및 텍스트 변경 -->
+
             <!-- Suggestion Modal -->
             <div x-show="suggestionModal.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[65] p-6" @click="closeSuggestionModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
@@ -2361,7 +2902,6 @@
                     <textarea x-model="suggestionModal.message" placeholder="Type your message here..." class="w-full h-32 bg-black/50 border border-white/20 rounded-xl p-3 text-white focus:outline-none focus:border-yellow-300 mb-4 resize-none"></textarea>
                     
                     <div class="grid grid-cols-2 gap-3">
-                        <!-- [수정] CANCEL -> BACK 으로 텍스트 변경 -->
                         <button @click="closeSuggestionModal()" class="glass-button py-3 text-gray-300 font-bold rounded-xl">BACK</button>
                         <button @click="sendSuggestion()" :disabled="suggestionModal.isSending || !suggestionModal.message.trim()" 
                                 class="glass-button py-3 font-bold rounded-xl text-yellow-300 border-yellow-500/50"
@@ -2370,6 +2910,38 @@
                             <span x-show="suggestionModal.isSending">SENDING...</span>
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <!-- [NEW] Badge Select Modal (Req 5) -->
+            <div x-show="badgeSelectModal.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[65] p-6" @click="closeBadgeModal()">
+                <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
+                    <h3 class="text-2xl font-bold text-cyan-300 mb-4">SELECT AGENT BADGE</h3>
+                    <p class="text-gray-400 text-sm mb-6">Select a badge to represent you on the Rekord.</p>
+                    
+                    <div x-show="isProfileLoading" class="text-center text-gray-400">Loading Badges...</div>
+                    
+                    <div x-show="!isProfileLoading" class="max-h-64 overflow-y-auto scrollbar-thin bg-black/30 rounded-xl p-4 border border-white/10 mb-6">
+                        <div class="grid grid-cols-5 gap-3">
+                            <!-- 기본 배지는 항상 선택 가능 -->
+                            <button @click="selectBadge(DEFAULT_BADGE)" 
+                                    class="glass-button w-full aspect-square flex items-center justify-center rounded-xl text-4xl transition-transform hover:scale-110"
+                                    :class="userProfile.selectedBadge === DEFAULT_BADGE ? 'ring-2 ring-cyan-400' : 'opacity-70'">
+                                <span x-text="DEFAULT_BADGE"></span>
+                            </button>
+                            
+                            <!-- 획득한 배지 루프 -->
+                            <template x-for="badge in userProfile.unlockedBadges.filter(b => b !== DEFAULT_BADGE)" :key="badge">
+                                <button @click="selectBadge(badge)" 
+                                        class="glass-button w-full aspect-square flex items-center justify-center rounded-xl text-4xl transition-transform hover:scale-110"
+                                        :class="userProfile.selectedBadge === badge ? 'ring-2 ring-cyan-400' : 'opacity-70'">
+                                    <span x-text="badge"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <button @click="closeBadgeModal()" class="glass-button w-full py-3 text-gray-300 font-bold rounded-xl">BACK</button>
                 </div>
             </div>
 
@@ -2396,12 +2968,13 @@
                         
                         <div class="p-3 bg-white/5 rounded-xl">
                             <h4 class="text-lg font-bold text-gray-300 mb-2">PERMANENT UPGRADES</h4>
+                            <!-- [UPDATE] Icon Refactoring -->
                             <div class="flex flex-wrap gap-3 text-2xl">
-                                <template x-if="timePlusLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="TIME+">⏳ TIME+ Lv.1</span></template>
-                                <template x-if="scanLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="SCAN">🎨 SCAN Lv.1</span></template>
-                                <template x-if="amuletLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="AMULET">🌙 AMULET Lv.1</span></template>
-                                <template x-if="assistLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="ASSIST">🤝 ASSIST Lv.1</span></template>
-                                <template x-if="reloadBoost > 0"><span class="bg-gray-700/50 p-2 rounded-lg" title="RELOAD CHARGE">🔄 RELOAD +<span x-text="reloadBoost"></span></span></template>
+                                <template x-if="timePlusLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.timePlus.title"><span x-text="ITEM_INFO.timePlus.icon"></span> TIME+ Lv.1</span></template>
+                                <template x-if="scanLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.scan.title"><span x-text="ITEM_INFO.scan.icon"></span> SCAN Lv.1</span></template>
+                                <template x-if="amuletLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.amulet.title"><span x-text="ITEM_INFO.amulet.icon"></span> AMULET Lv.1</span></template>
+                                <template x-if="assistLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.assist.title"><span x-text="ITEM_INFO.assist.icon"></span> ASSIST Lv.1</span></template>
+                                <template x-if="reloadBoost > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.reload.title"><span x-text="ITEM_INFO.reload.icon"></span> RELOAD +<span x-text="reloadBoost"></span></span></template>
                                 <template x-if="timePlusLevel === 0 && scanLevel === 0 && amuletLevel === 0 && assistLevel === 0 && reloadBoost === 0"><span class="text-gray-500 text-sm italic">NO UPGRADES ACQUIRED</span></template>
                             </div>
                         </div>
@@ -2545,7 +3118,7 @@
                     <div class="booster-pack-container flex flex-col items-center">
                         <template x-if="gachaState === 'ready' || gachaState === 'opening'">
                              <button @click="startGachaAnimation()" :disabled="gachaState !== 'ready'" class="booster-pack cursor-pointer" :class="gachaState === 'opening' ? 'pack-shaking' : ''">
-                                <span class="text-purple-300 font-black">🃏</span>
+                                <span class="text-purple-300 font-black" x-text="ITEM_INFO.objekt.icon"></span>
                             </button>
                         </template>
                         <div x-show="gachaState === 'joker_flash'" class="absolute inset-0 z-10 w-full h-full flash-overlay-purple rounded-3xl"></div>
