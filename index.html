@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBJEKT Rush (v10.312 - Rekord UI Unified)</title>
+    <title>OBJEKT Rush (v10.311 - Icon & Config Refactor)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     
@@ -558,6 +558,7 @@
                 
                 // [UPDATE] Auth 리스너가 Profile Load와 Badge Grant를 트리거
                 listenForAuth() {
+                    // [FIX] v10.307: Firebase 모듈이 로드될 때까지 200ms 간격으로 재시도 (Race Condition 수정)
                     if (!window.fbOnAuthStateChanged) {
                         console.warn("Auth listener not ready, retrying in 200ms...");
                         setTimeout(() => this.listenForAuth(), 200);
@@ -566,6 +567,7 @@
                     
                     window.fbOnAuthStateChanged(window.fbAuth, (user) => {
                         if (user) {
+                            // customUid가 설정되어 있지 않을 때만 auth uid를 사용
                             if (!localStorage.getItem('objektRushCustomUid')) {
                                 this.currentUid = user.uid;
                             }
@@ -581,7 +583,7 @@
                             console.log("User is signed out.");
                         }
                     });
-                    
+                    // 수동 UID가 이미 있다면 즉시 반영
                     if (localStorage.getItem('objektRushCustomUid')) {
                         this.currentUid = localStorage.getItem('objektRushCustomUid');
                         // [NEW] 수동 UID가 있어도 프로필 로드 및 배지 체크 실행
@@ -674,7 +676,7 @@
                 // [NEW] 배지 지급 헬퍼 함수 (Req 6)
                 async grantBadge(badgeEmoji, showFeedbackMsg = true) {
                     if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return;
-                    // 중복 지급 방지 및 프로필 초기화 (userProfiles 문서가 없을 경우 setDoc 사용)
+                    // 중복 지급 방지 ( grantBadge가 loadUserProfile보다 먼저 호출될 수 있으므로, userProfile.unlockedBadges 대신 getDoc을 한번 더 함)
                     const docRef = window.fbDoc(window.fbDb, "userProfiles", this.activeUserId);
                     const docSnap = await window.fbGetDoc(docRef);
 
@@ -683,6 +685,7 @@
                     }
                     
                     try {
+                        // setDoc(docRef, { unlockedBadges: window.fbArrayUnion(badgeEmoji) }, { merge: true }); 와 동일한 효과
                         await window.fbUpdateDoc(docRef, {
                             unlockedBadges: window.fbArrayUnion(badgeEmoji)
                         });
@@ -696,12 +699,12 @@
                             this.showFeedback(`REWARD: ${badgeEmoji} UNLOCKED!`, 'correct');
                         }
                     } catch (e) {
-                         // userProfiles 문서가 아직 없는 극초기 유저가 랭커가 되어 비시즌에 접속한 경우
+                         // userProfiles 문서가 아직 없는 극초기 유저가 랭커가 되어 비시즌에 접속한 경우, update가 실패할 수 있음.
                         if (e.code === 'not-found') {
                             console.warn("Profile not found on grantBadge, creating with badge...");
                             await window.fbSetDoc(docRef, {
                                 unlockedBadges: [this.DEFAULT_BADGE, badgeEmoji],
-                                selectedBadge: this.userProfile.selectedBadge || this.DEFAULT_BADGE // 기존 선택 유지 또는 기본값
+                                selectedBadge: this.DEFAULT_BADGE
                             });
                             this.userProfile.unlockedBadges = [this.DEFAULT_BADGE, badgeEmoji];
                             if (showFeedbackMsg) {
@@ -1318,7 +1321,7 @@
                 
                 // [NEW] 기존 기록 확인 (시즌 + 유저ID)
                 async checkExistingRecord(type, currentScore) {
-                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return null;
+                    if (!this.activeUserId || this.activeUserId === 'CONNECTING...') return null; // [FIX]
                     
                     const q = window.fbQuery(
                         window.fbCollection(window.fbDb, "ranks"),
@@ -1734,7 +1737,6 @@
                         
                         if (matchIndexInRemaining !== -1) {
                             this.matchedOrderIndices[i] = true;
-                            blockChecklist.splice(matchIndex, 1); // [ERROR] blockChecklist not defined here. Should modify the remainingSlotCards list instead
                             remainingSlotCards.splice(matchIndexInRemaining, 1); 
                             continue; 
                         }
@@ -2531,7 +2533,7 @@
                                         :class="{'ring-2 ring-offset-2 ring-offset-gray-900 ring-purple-500 rounded-lg': isSelectedInventory(card.inventoryId)}">
                                     <div x-data="objektCard(card)">
                                         <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" 
-                                            :class="[borderStyles, checkSmartGuide(card) ? 'guide-pulse' : '']" 
+                                            :class="borderStyles" 
                                             :style="cardStyles.background">
                                             <div class="flex-grow h-full flex flex-col items-center justify-center p-1">
                                                 <span class="text-lg font-extrabold" :style="cardStyles.text" x-text="card.sNumber"></span>
@@ -2712,58 +2714,7 @@
                                     <div x-show="entry.specialCards && entry.specialCards.length > 0" class="flex flex-wrap gap-1 px-1">
                                         <template x-for="card in entry.specialCards" :key="card.inventoryId || card.sNumber">
                                             <div x-data="objektCard(card, false)">
-                                                <div class="w-8 h-10 rounded-md flex shadow-sm border" :class="borderStyles" :style="`${cardStyles.background}; border-width: 1px;`">
-                                                    <div class="flex-grow h-full flex flex-col items-center justify-center p-0">
-                                                        <span class="text-xs font-extrabold" style="color: #000;" x-text="card.sNumber.replace('S', '')"></span>
-                                                    </div>
-                                                    <div class="flex-shrink-0 w-1/5 h-full flex items-center justify-center rounded-r-sm holo-bg">
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                    <div x-show="rankingTab === 'extra'" class="space-y-1">
-                        <template x-if="extraHighScores.length === 0">
-                            <div class="text-center py-8">
-                                <p class="text-gray-500 text-lg mb-2">NO REKORD</p>
-                                <p class="text-xs text-gray-600">Be the first to register in <span x-text="currentSeason.id"></span>!</p>
-                            </div>
-                        </template>
-                        <template x-for="(entry, index) in extraHighScores" :key="entry.name + entry.score + index">
-                            <div>
-                                <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative"
-                                     :class="{'bg-teal-500/10 border-teal-500/30': index === 0, 'bg-gray-400/10 border-gray-400/30': index === 1, 'bg-yellow-700/10 border-yellow-700/30': index === 2}">
-                                    <div class="flex items-center">
-                                        <span class="font-bold w-8 text-left flex-shrink-0" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
-                                        
-                                        <!-- [NEW] 대표 배지 표시 (Req 1) -->
-                                        <span class="text-2xl mr-2 flex-shrink-0" x-text="entry.profileBadge || DEFAULT_BADGE"></span>
-
-                                        <span class="font-bold text-xl text-white truncate" x-text="entry.name"></span>
-                                    </div>
-
-                                    <div class="text-right flex-shrink-0 pl-2">
-                                        <span class="font-bold text-xl text-teal-300" x-text="entry.score"></span>
-                                        <span class="text-xs text-gray-500 block" x-text="entry.season ? `SEASON: ${entry.season}` : ''"></span>
-                                    </div>
-                                </div>
-                                <div x-show="(entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)) || (entry.specialCards && entry.specialCards.length > 0)"
-                                     class="glass-panel p-3 rounded-b-2xl -mt-2 z-0 bg-black/30 border-t-0 border-white/10">
-                                    <!-- [UPDATE] Icon Refactoring -->
-                                    <div class="flex items-center space-x-2 mb-2 px-1" x-show="entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)">
-                                        <template x-if="entry.items.reload > 0"><span class="text-base" :title="ITEM_INFO.reload.title"><span x-text="ITEM_INFO.reload.icon"></span>(<span x-text="entry.items.reload"></span>)</span></template>
-                                        <template x-if="entry.items.time > 0"><span class="text-base" :title="ITEM_INFO.timePlus.title" x-text="ITEM_INFO.timePlus.icon"></span></template>
-                                        <template x-if="entry.items.scan > 0"><span class="text-base" :title="ITEM_INFO.scan.title" x-text="ITEM_INFO.scan.icon"></span></template>
-                                        <template x-if="entry.items.amulet > 0"><span class="text-base" :title="ITEM_INFO.amulet.title" x-text="ITEM_INFO.amulet.icon"></span></template>
-                                        <template x-if="entry.items.assist > 0"><span class="text-base" :title="ITEM_INFO.assist.title" x-text="ITEM_INFO.assist.icon"></span></template>
-                                    </div>
-                                    <div x-show="entry.specialCards && entry.specialCards.length > 0" class="flex flex-wrap gap-1 px-1">
-                                        <template x-for="card in entry.specialCards" :key="card.inventoryId || card.sNumber">
-                                            <div x-data="objektCard(card, false)">
+                                                <!-- [수정] 아래 div 태그가 잘못 닫혀있던 오류 수정 -->
                                                 <div class="w-8 h-10 rounded-md flex shadow-sm border" :class="borderStyles" :style="`${cardStyles.background}; border-width: 1px;`">
                                                     <div class="flex-grow h-full flex flex-col items-center justify-center p-0">
                                                         <span class="text-xs font-extrabold" style="color: #000;" x-text="card.sNumber.replace('S', '')"></span>
