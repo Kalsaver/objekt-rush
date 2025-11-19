@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
     
-    <!-- FIREBASE SDK & INITIALIZATION (MODULE) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
@@ -342,12 +341,12 @@
         };
 
         const GAME_ITEM_INFO = {
-            objekt: { title: 'OBJEKT PACK', desc: '', cost: 1, icon: '🃏' },
-            reload: { title: 'RELOAD CHARGE', desc: 'item_reload_desc', cost: 1, icon: '🔄' },
-            timePlus: { title: 'TIME+ (Lv.1)', desc: 'item_timePlus_desc', cost: 4, icon: '⏳' }, 
-            scan: { title: 'SCAN (Lv.1)', desc: 'item_scan_desc', cost: 4, icon: '🔍' }, 
-            amulet: { title: 'AMULET (Lv.1)', desc: 'item_amulet_desc', cost: 3, icon: '🌙' }, 
-            assist: { title: 'ASSIST (Lv.1)', desc: 'item_assist_desc', cost: 3, icon: '🤝' } 
+            objekt: { title: 'OBJEKT PACK', desc: '', cost: 1, icon: '🃏', maxLevel: 0 }, // 0은 무제한/소모품 의미
+            reload: { title: 'RELOAD CHARGE', desc: 'item_reload_desc', cost: 1, icon: '🔄', maxLevel: 20, stateKey: 'reloadBoost' },
+            timePlus: { title: 'TIME+ (Lv.1)', desc: 'item_timePlus_desc', cost: 4, icon: '⏳', maxLevel: 1, stateKey: 'timePlusLevel' }, 
+            scan: { title: 'SCAN (Lv.1)', desc: 'item_scan_desc', cost: 4, icon: '🔍', maxLevel: 1, stateKey: 'scanLevel' }, 
+            amulet: { title: 'AMULET (Lv.1)', desc: 'item_amulet_desc', cost: 3, icon: '🌙', maxLevel: 1, stateKey: 'amuletLevel' }, 
+            assist: { title: 'ASSIST (Lv.1)', desc: 'item_assist_desc', cost: 3, icon: '🤝', maxLevel: 1, stateKey: 'assistLevel' } 
         };
 
         const GAME_DEFAULT_BADGE = '👾';
@@ -389,10 +388,10 @@
         const GAME_BOSS_POOLS = {
             'NXT_GLOW': ['NXT', 'Glow'],
             'AAA_KRE': ['AAA', 'KRE'],
+            'MSNZ': ['Moon', 'Sun', 'Neptune', 'Zenith'],
             'LOVE_EVOL': ['LOVE', 'EVOL'],
-            'ARIA_VV': ['Aria', 'VV'],
             'HATCH_ALPHIE': ['Hatch!', 'Alphie'],
-            'MSNZ': ['Moon', 'Sun', 'Neptune', 'Zenith']
+            'ARIA_VV': ['Aria', 'VV']
         };
 
         const GAME_MEMBER_DATA = [
@@ -533,17 +532,21 @@
             }
         };
 
-        const GAME_BGM_MAP = {
-            'start': 'bgm_title.mp3',
-            'intro': 'bgm_title.mp3', 
-            'ranking': 'bgm_title.mp3', 
-            'settings': 'bgm_title.mp3', 
-            'intermission': 'bgm_intermission.mp3',
-            'playing': 'bgm_playing.mp3',
-            'boss_playing': 'bgm_boss.mp3', 
-            'gacha': 'bgm_intermission.mp3', 
-            'submitScore': 'bgm_intermission.mp3',
-            'ending': 'bgm_ending.mp3'
+        const GAME_AUDIO_CONFIG = {
+            basePath: 'assets/audio/',
+            bgm: {
+                'start': 'bgm_title.mp3',
+                'intro': 'bgm_title.mp3', 
+                'ranking': 'bgm_title.mp3', 
+                'settings': 'bgm_title.mp3', 
+                'intermission': 'bgm_intermission.mp3',
+                'playing': 'bgm_playing.mp3',
+                'boss_playing': 'bgm_boss.mp3', 
+                'gacha': 'bgm_intermission.mp3', 
+                'submitScore': 'bgm_intermission.mp3',
+                'ending': 'bgm_ending.mp3'
+            },
+            sfx: ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear']
         };
 
         const GAME_BANNED_NAMES = ['SEX', 'ASS', 'FCK', 'FUK', 'KKK', 'NIG', 'GAY', 'TIT', 'CNT', 'ADM', 'SYS'];
@@ -597,7 +600,32 @@
                 lastStageGrade: 'C',
                 bossJComment: '',
                 endingType: 'C',
+                // [MODIFIED] stageGrades는 이제 최종 Stage Grade 기록용으로만 사용 (S1~S10)
                 stageGrades: [], 
+                
+                // [NEW] 임시 저장소: 현재 스테이지의 모든 블록 상세 점수 기록
+                currentStageBlockDetails: [],
+                
+                // [NEW] 리로드 총 감점액 추적
+                reloadPenaltyTotal: 0, 
+
+                // [NEW] Stage Report Data
+                report: {
+                    show: false,
+                    stage: 0,
+                    score: 0,
+                    maxBlocks: 0,
+                    clearedBlocks: 0, // 시간 초과 없이 완료된 블록 수 (processBlockComplete에서 증가)
+                    baseScore: 0,
+                    perfectBonusScore: 0,
+                    chainBonusScore: 0,
+                    failPenalty: 0,
+                    timeOverPenalty: 0,
+                    reloadPenalty: 0,
+                    maxChain: 0,
+                    perfectCount: 0,
+                    unlockMessage: '', // 기존 개방 알림
+                },
 
                 // Data & Slots
                 korData: [],
@@ -621,15 +649,16 @@
                 reloadCount: 10, 
                 currentReloadPenalty: 5,
                 
-                // Modals
+               // Modals
                 shopModal: { show: false, item: '', title: '', desc: '', cost: 0, isMax: false },
-                unlockModal: { show: false, title: '', message: '' },
+                // [REMOVED] unlockModal: { show: false, title: '', message: '' }, // Stage Report Modal로 대체됨
                 returnConfirmModal: { show: false },
                 resetConfirmModal: { show: false, type: 'all' },
                 feedback: { show: false, message: '', type: 'correct', timer: null },
                 suggestionModal: { show: false, message: '', isSending: false },
                 badgeSelectModal: { show: false },
                 accountModalShow: false,
+
                 // Gacha
                 gachaState: 'ready', 
                 gachaResultCard: null,
@@ -673,7 +702,7 @@
                 bgm: {}, 
                 currentBGM: null, 
                 bgmVolume: 0.3, 
-                sfxVolume: 0.5, 
+                sfxVolume: 0.5,
 
                 // Season & Time
                 currentSeason: { id: '', name: '', cycle: 0, color: '#FFFFFF', state: 'active', dDay: 0, badge: '👾', frozenText: '' }, 
@@ -751,7 +780,8 @@
                         // 탭 활성화 시 BGM 재개
                         window.addEventListener('focus', () => {
                             if (this.currentBGM) {
-                                const bgmName = this.BGM_MAP[this.gameState];
+                                // [FIX] GAME_AUDIO_CONFIG.bgm 사용
+                                const bgmName = GAME_AUDIO_CONFIG.bgm[this.gameState];
                                 if (bgmName) {
                                     if (this.gameState === 'intermission' && this.lastStageGrade === 'F') {
                                         // Do nothing
@@ -1175,15 +1205,14 @@
                     this.showFeedback('RESET TO DEFAULT', 'correct');
                     setTimeout(() => location.reload(), 1000);
                 },
-
-                BGM_MAP: GAME_BGM_MAP,
                 
                 switchBGM(newState) {
                     if (this.currentBGM) {
                         this.currentBGM.pause();
                     }
                     
-                    const bgmName = this.BGM_MAP[newState];
+                    // [FIX] GAME_AUDIO_CONFIG.bgm 직접 참조
+                    const bgmName = GAME_AUDIO_CONFIG.bgm[newState];
 
                     if (newState === 'intermission' && this.lastStageGrade === 'F') {
                         this.currentBGM = null;
@@ -1193,7 +1222,8 @@
                     if (bgmName) {
                         let audio = this.bgm[bgmName];
                         if (!audio) {
-                            audio = new Audio(`assets/audio/${bgmName}`); 
+                            // [FIX] GAME_AUDIO_CONFIG.basePath 사용
+                            audio = new Audio(`${GAME_AUDIO_CONFIG.basePath}${bgmName}`); 
                             audio.loop = true;
                             this.bgm[bgmName] = audio;
                         }
@@ -1220,9 +1250,9 @@
                 },
 
                 initSounds() {
-                    const singleSoundList = ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear'];
-                    singleSoundList.forEach(s => {
-                        this.sounds[s] = new Audio(`assets/audio/sfx_${s}.mp3`);
+                    // [REFACTOR] GAME_AUDIO_CONFIG 상수 활용
+                    GAME_AUDIO_CONFIG.sfx.forEach(s => {
+                        this.sounds[s] = new Audio(`${GAME_AUDIO_CONFIG.basePath}sfx_${s}.mp3`);
                         this.sounds[s].volume = this.sfxVolume;
                     });
 
@@ -1338,6 +1368,8 @@
                 },
                 handleIntermissionNext() {
                     this.playSound('click');
+                    // [MODIFIED] 모달이 닫힌 후 다음 단계로 진행 (goToIntermission의 proceedToNextState 로직과 연계)
+                    this.report.show = false; // 혹시 모를 경우를 대비해 확실히 닫음
                     this.nextStage();
                 },
                 nextStage() {
@@ -1368,6 +1400,9 @@
 
                     this.stageNormalBlockScore = 0;
                     this.stageNormalBlockCount = 0;
+
+                    this.currentStageBlockDetails = [];
+                    this.reloadPenaltyTotal = 0;
 
                     this.nextBlockWillBeBoss = false; 
                     this.currentBlock = null; 
@@ -1407,30 +1442,39 @@
                     if (this.stage >= 1) return 2; 
                     return 0; 
                 },
+                // game.goToIntermission() 함수 (전체 교체)
                 goToIntermission() { 
                     clearInterval(this.orderTimer); 
                     
-                    this.totalScore += this.score; this.lastStageScore = this.score; this.selectedInventoryCard = null; 
+                    // 이전 스테이지의 총 점수와 현재 스코어를 더해 누적 총점 계산
+                    this.totalScore += this.score; 
+                    this.lastStageScore = this.score; 
+                    this.selectedInventoryCard = null; 
+                    
+                    // 리로드 잔여 부스트 계산
                     const remainingBoost = Math.max(0, this.reloadCount - 10);
                     this.reloadBoost = remainingBoost;
-                    this.comoEarned = this.getStageBaseComo();
                     
+                    this.comoEarned = this.getStageBaseComo();
                     this.intermissionSpinCount = 0; 
                     
                     // [UPDATE] 평균 점수 계산
                     const averageScore = (this.stageNormalBlockCount > 0) ? (this.stageNormalBlockScore / this.stageNormalBlockCount) : 0; 
                     
-                    // [REFACTOR] 통합 함수 사용으로 if-else 체인 제거
                     const gradeInfo = this.calcGrade(averageScore);
                     const grade = gradeInfo.grade;
                     this.bonusComo = gradeInfo.bonus;
                     
                     this.lastStageGrade = grade; 
                     this.como += this.comoEarned + this.bonusComo;
+                    
+                    // 방금 클리어한 스테이지 번호
+                    const clearedStage = this.stage;
 
-                    if (this.stage <= 10) {
+                    // [MODIFIED] StageGrades는 최종 Grade 기록용으로만 사용 (S1~S10)
+                    if (clearedStage <= 10) {
                         this.stageGrades.push({ 
-                            stage: this.stage, 
+                            stage: clearedStage, 
                             grade: grade, 
                             score: this.score,
                             maxBlocks: this.totalBlocksPerStage,
@@ -1442,88 +1486,154 @@
                     const commentKey = comments[Math.floor(Math.random() * comments.length)];
                     this.bossJComment = this.translate(commentKey);
                     
-                    this.consecutivePerfects = 0; this.chainCount = 0;
+                    this.consecutivePerfects = 0; 
+                    this.chainCount = 0;
+                    
+                    const isOvertimeSubmit = clearedStage === 11; // S11을 클리어한 경우
+                    const isEndingStage = clearedStage === 10; // S10을 클리어한 경우
+
+                    // 1. 리포트 데이터 생성 (현재 스테이지 번호를 전달)
+                    const reportData = this.generateReportData(clearedStage, this.score, this.currentStageBlockDetails); 
+
+                    // 2. 모달 표시
+                    this.showStageReport(reportData);
 
                     let nextIsEnding = false;
-                    let nextIsOvertimeSubmit = false; 
-
-                    if (this.stage === 10) { 
+                    if (isEndingStage) { 
                         nextIsEnding = true;
-                    } else if (this.stage === 11) {
-                        // Overtime logic
-                    } else if (this.stage < 10) {
-                        this.stage++; 
+                    } else if (clearedStage < 10 || isOvertimeSubmit) {
+                        // [FIX] 다음 스테이지로의 이동은 인터미션 로직이 끝난 후, 다음 버튼을 눌렀을 때 진행해야 하므로,
+                        // 이 곳에서 this.stage++를 호출하지 않습니다. (Stage Report를 띄우는 동안은 clearedStage를 유지해야 함)
                     }
                     
                     const proceedToNextState = async () => {
-                         if (nextIsEnding) {
+                        // [FIX] 다음 스테이지 번호 업데이트는 여기서 수행 (모달을 닫는 버튼의 @click 이벤트에서 호출)
+                        if (!isEndingStage && !isOvertimeSubmit) {
+                            this.stage++;
+                        }
+                        
+                        // ... (이하 제출 로직 유지) ...
+                        if (nextIsEnding) {
                             this.finalScore = this.totalScore; 
                             await this.loadHighScores();
-                            
-                            // [FIX] 상수로 박혀있던 총 블록 수를 설정값(S1~S10)에서 동적으로 계산하도록 수정
-                            // GAME_STAGE_CONFIG의 0번부터 9번 인덱스(S1~S10)까지의 (blocks + bosses) 합계
                             const totalBlocksInGame = GAME_STAGE_CONFIG.slice(0, 10).reduce((sum, stage) => sum + stage.blocks + stage.bosses.length, 0);
-                            
                             const finalAverage = this.totalScore / totalBlocksInGame;
-                            
-                            // [REFACTOR] 엔딩 등급 산정 로직도 통합 함수 사용
                             const finalGradeInfo = this.calcGrade(finalAverage);
                             this.endingType = finalGradeInfo.endingType;
-                            
                             this.gameState = 'ending';
-                            
                             const lowestHighScore = (this.highScores.length < 24) ? 0 : this.highScores[23]?.score || 0;
                             const hasExisting = await this.checkExistingRecord('main', this.totalScore);
-                            
                             if (this.totalScore > lowestHighScore || hasExisting || (this.playerName !== 'SSS' && this.playerName)) { 
                                 this.previousGameState = 'ending'; 
                                 this.gameState = 'submitScore'; 
                             }
 
-                        } else if (this.stage === 11) { 
+                        } else if (isOvertimeSubmit) { 
                             await this.loadExtraHighScores();
                             const lowestExtraScore = (this.extraHighScores.length < 24) ? 0 : this.extraHighScores[23].score;
-                            
                             const hasExisting = await this.checkExistingRecord('extra', this.lastStageScore);
-                            
                             if (this.lastStageScore > lowestExtraScore || hasExisting || (this.playerName !== 'SSS' && this.playerName)) {
-                                nextIsOvertimeSubmit = true;
-                            }
-                            
-                            if (nextIsOvertimeSubmit) { 
                                 this.previousGameState = 'intermission'; 
                                 this.gameState = 'submitScore'; 
                             } else { 
                                 this.gameState = 'intermission'; 
-                                if (this.lastStageGrade === 'F') {
-                                    if (this.currentBGM) {
-                                        this.currentBGM.pause();
-                                        this.currentBGM = null;
-                                    }
-                                }
-                                if (this.lastStageGrade !== 'F') {
-                                    // ... (unlocks handled below) ...
-                                }
                             }
                         } else { 
-                            // S1-S9 다음 스테이지
+                            // S1-S9 다음 스테이지 (stage++는 이미 위에서 처리됨)
                             this.gameState = 'intermission'; 
-                            if (this.lastStageGrade === 'F') {
-                                if (this.currentBGM) {
-                                    this.currentBGM.pause();
-                                    this.currentBGM = null;
-                                }
-                            }
-                            if (this.lastStageGrade !== 'F') {
-                                if (this.stage === 2) this.showUnlock('SHOP OPEN!', 'OBJEKT, RELOAD');
-                                if (this.stage === 4) this.showUnlock('SYSTEM UNLOCKED!', 'SPIN, GRID'); 
-                                if (this.stage === 5) this.showUnlock('NEW ITEM!', 'TIME+, SCAN');
-                                if (this.stage === 6) this.showUnlock('SYSTEM UNLOCKED!', 'GRAVITY SYSTEM READY');
-                                if (this.stage === 7) this.showUnlock('NEW ITEM!', 'AMULET, ASSIST');
+                        }
+                        
+                        // F 등급 시 BGM 중단 로직
+                        if (this.gameState === 'intermission' && this.lastStageGrade === 'F') {
+                            if (this.currentBGM) {
+                                this.currentBGM.pause();
+                                this.currentBGM = null;
                             }
                         }
                     };
-                    proceedToNextState();
+                    
+                    // [MODIFIED] 모달이 닫히면 다음 상태로 진행되도록 로직 수정 (closeStageReport에서 호출)
+                    window.closeStageReportAndProceed = proceedToNextState.bind(this);
+                },
+
+                // [MODIFIED] Stage Report Data 집계 함수 (clearedStage를 인자로 받음)
+                generateReportData(clearedStage, totalScore, blockDetails) {
+                    
+                    const configIndex = Math.min(clearedStage - 1, this.stageConfig.length - 1); 
+                    const config = this.stageConfig[configIndex]; 
+                    const maxBlocks = config ? (config.blocks + config.bosses.length) : blockDetails.length;
+                    
+                    // StageGrades에서 해당 스테이지의 상세 데이터를 합산
+                    const summary = blockDetails.reduce((acc, detail) => {
+                        acc.baseScore += detail.baseScore;
+                        acc.perfectBonusScore += detail.perfectBonusScore;
+                        acc.chainBonusScore += detail.chainBonusScore;
+                        acc.failPenalty += detail.failPenalty;
+                        acc.timeOverPenalty += detail.timeOverPenalty;
+                        if (detail.isCompleted) acc.clearedBlocks++;
+                        if (detail.isPerfect) acc.perfectCount++;
+                        acc.maxChain = Math.max(acc.maxChain, detail.maxChain);
+                        return acc;
+                    }, { 
+                        clearedBlocks: 0, 
+                        baseScore: 0, 
+                        perfectBonusScore: 0, 
+                        chainBonusScore: 0, 
+                        failPenalty: 0, 
+                        timeOverPenalty: 0, 
+                        perfectCount: 0, 
+                        maxChain: 0 
+                    });
+                    
+                    // [FIXED] 개방 알림 메시지 생성: 다음 스테이지 번호가 아닌 클리어 스테이지 번호 기준으로 설정
+                    const nextStage = clearedStage + 1;
+                    let unlockMsg = '';
+                    
+                    if (nextStage === 2) unlockMsg = 'SHOP OPEN!, RELOAD CHARGE'; 
+                    else if (nextStage === 4) unlockMsg = 'SYSTEM UNLOCKED!, SPIN, GRID';
+                    else if (nextStage === 5) unlockMsg = 'NEW ITEM!, TIME+, SCAN';
+                    else if (nextStage === 6) unlockMsg = 'SYSTEM UNLOCKED!, GRAVITY SYSTEM READY';
+                    else if (nextStage === 7) unlockMsg = 'NEW ITEM!, AMULET, ASSIST'; 
+                    
+                    // S11 클리어 후
+                    if (clearedStage === 11) unlockMsg = 'OVERTIME REKORD SUBMIT';
+
+                    return {
+                        show: true, // 모달 표시 상태를 여기서 설정
+                        stage: clearedStage,
+                        score: totalScore,
+                        maxBlocks: maxBlocks,
+                        clearedBlocks: summary.clearedBlocks,
+                        baseScore: summary.baseScore,
+                        perfectBonusScore: summary.perfectBonusScore,
+                        chainBonusScore: summary.chainBonusScore,
+                        failPenalty: summary.failPenalty,
+                        timeOverPenalty: summary.timeOverPenalty,
+                        // [MODIFIED] 누적된 리로드 감점액을 표시
+                        reloadPenalty: this.reloadPenaltyTotal, 
+                        maxChain: summary.maxChain,
+                        perfectCount: summary.perfectCount,
+                        unlockMessage: unlockMsg
+                    };
+                },
+
+                // [NEW] Stage Report Modal 열기 함수 (간소화)
+                showStageReport(reportData) { 
+                    this.playSound('stage_clear'); // Stage Clear 효과음 사용
+                    this.report = { 
+                        ...reportData, 
+                        show: true 
+                    };
+                },
+                // [MODIFIED] 모달 닫기 시 다음 상태로 진행
+                closeStageReport() { 
+                    this.playSound('click'); 
+                    this.report.show = false; 
+                    // goToIntermission에서 바인딩한 함수를 호출하여 다음 상태로 전환 로직 실행
+                    if (window.closeStageReportAndProceed) {
+                        window.closeStageReportAndProceed();
+                        window.closeStageReportAndProceed = null; 
+                    }
                 },
 
                 async checkExistingRecord(type, currentScore) {
@@ -1575,16 +1685,6 @@
                     }
                 },
 
-                showUnlock(title, message) { 
-                    this.playSound('click'); 
-                    this.unlockModal.title = title; 
-                    this.unlockModal.message = message; 
-                    this.unlockModal.show = true; 
-                },
-                closeUnlockModal() { 
-                    this.playSound('click'); 
-                    this.unlockModal.show = false; 
-                },
                 confirmReturn() { this.playSound('click'); this.returnConfirmModal.show = true; },
                 cancelReturn() { this.playSound('click'); this.returnConfirmModal.show = false; },
                 
@@ -1811,10 +1911,16 @@
                 calculateAndApplyScore(isTimeOver) {
                     const block = this.currentBlock; 
                     if (!block) return; 
-                    let totalScore = 0; 
+                    
+                    // 1. 기본 점수 계산
+                    let baseScore = 0; 
                     let correctCount = 0; 
                     let wrongCount = 0; 
                     let penalty = 0; 
+                    
+                    // [NEW] 리포트용 점수 요소 초기화 (이 블록에서 발생한 것만)
+                    let blockFailPenalty = 0;
+                    let blockTimeOverPenalty = 0;
 
                     let blockChecklist = [];
                     if (block.bundleType === 'birthday') { 
@@ -1841,77 +1947,103 @@
                         }
                         
                         if (isMatch) { 
-                            totalScore += GAME_SCORING.CORRECT_CARD; 
+                            baseScore += GAME_SCORING.CORRECT_CARD; 
                             correctCount++; 
                         }
                         else if (card.type === 'joker_card' && blockChecklist.length > 0) { 
-                            totalScore += GAME_SCORING.CORRECT_CARD; 
+                            baseScore += GAME_SCORING.CORRECT_CARD; 
                             correctCount++; 
                             blockChecklist.splice(0, 1); 
                         }
                         else {
                             wrongCount++;
-                            if (card.type === 'fail_card') { penalty += GAME_SCORING.FAIL_PENALTY; }
+                            if (card.type === 'fail_card') { 
+                                penalty += GAME_SCORING.FAIL_PENALTY; 
+                                blockFailPenalty += GAME_SCORING.FAIL_PENALTY; // [NEW] 집계
+                            }
                         }
                     }
                     
-                    totalScore -= penalty;
+                    baseScore -= penalty;
+                    
+                    // 2. 보너스 점수 계산
+                    let perfectBonusScore = 0;
+                    let chainBonusScore = 0;
                     
                     const isPerfect = !isTimeOver && wrongCount === 0 && this.completedCards.length === block.members.length;
                     
                     if (isPerfect) {
-                        let perfectBonus;
                         if (block.isBoss) {
-                            perfectBonus = GAME_SCORING.BOSS_PERFECT_MULTIPLIER * block.members.length; 
+                            perfectBonusScore = GAME_SCORING.BOSS_PERFECT_MULTIPLIER * block.members.length; 
                         } else {
-                            perfectBonus = GAME_SCORING.PERFECT_BASE_MULTIPLIER * block.members.length;
+                            perfectBonusScore = GAME_SCORING.PERFECT_BASE_MULTIPLIER * block.members.length;
                         }
-                        totalScore += perfectBonus; 
                         
                         this.consecutivePerfects++;
                         this.chainCount = Math.max(0, this.consecutivePerfects - 1); 
                         if (this.chainCount > 0) { 
-                            const chainBonus = this.chainCount * 5; 
-                            totalScore += chainBonus; 
+                            chainBonusScore = this.chainCount * 5; 
                             this.playSound('chain'); 
                         }
+                        this.playSound('perfect');
                     } else { 
                         this.consecutivePerfects = 0; 
                         this.chainCount = 0; 
+                        if (!isTimeOver) this.playSound('clear');
                     }
                     
+                    // 3. 최종 점수 합산
+                    let finalBlockScore = baseScore + perfectBonusScore + chainBonusScore;
+
                     if (isTimeOver) {
-                        totalScore -= GAME_SCORING.TIME_OVER_PENALTY;
+                        finalBlockScore -= GAME_SCORING.TIME_OVER_PENALTY;
+                        blockTimeOverPenalty = GAME_SCORING.TIME_OVER_PENALTY; // [NEW] 집계
+                        this.playSound('fail'); 
                     }
 
                     if (!block.isBoss) {
-                        this.stageNormalBlockScore = (this.stageNormalBlockScore || 0) + totalScore;
+                        this.stageNormalBlockScore = (this.stageNormalBlockScore || 0) + finalBlockScore;
                         this.stageNormalBlockCount = (this.stageNormalBlockCount || 0) + 1;
                     }
 
-                    this.score = Math.max(0, this.score + totalScore);
+                    this.score = Math.max(0, this.score + finalBlockScore);
+
+                    // [NEW] 4. Stage Grades에 상세 점수 추가 (리포트용)
+                    this.currentStageBlockDetails.push({
+                         baseScore: baseScore,
+                         perfectBonusScore: perfectBonusScore,
+                         chainBonusScore: chainBonusScore,
+                         failPenalty: blockFailPenalty,
+                         timeOverPenalty: blockTimeOverPenalty,
+                         isPerfect: isPerfect,
+                         isTimeOver: isTimeOver,
+                         isCompleted: !isTimeOver,
+                         finalScore: finalBlockScore,
+                         maxChain: this.chainCount
+                    });
                     
+                    // 5. 피드백 메시지 생성 (간결형: +총점 (🎯기본 ✨퍼펙트 ⛓️체인))
                     let feedbackMsg = '';
+                    
                     if (isTimeOver) {
-                        feedbackMsg = `TIME OVER (-${GAME_SCORING.TIME_OVER_PENALTY})`;
-                        this.playSound('fail'); 
-                    } else if (isPerfect) {
-                        feedbackMsg = `+${totalScore}`;
-                         this.playSound('perfect'); 
-                    } else if (wrongCount > 0) { 
-                        feedbackMsg = `${totalScore >= 0 ? '+' + totalScore : totalScore}`; 
-                        this.playSound('clear'); 
+                         feedbackMsg = `TIME OVER -${GAME_SCORING.TIME_OVER_PENALTY}`;
                     } else {
-                        feedbackMsg = `+${totalScore}`;
-                        this.playSound('clear'); 
+                         const sign = finalBlockScore >= 0 ? '+' : '';
+                         feedbackMsg = `${sign}${finalBlockScore}`;
+                         
+                         let details = [];
+                         
+                         // 보너스가 하나라도 있으면 상세 내역 표시 (기본 점수 포함)
+                         if (perfectBonusScore > 0 || chainBonusScore > 0) {
+                             details.push(`🎯${baseScore}`); // 기본 점수 (이모지 추가)
+                             if (perfectBonusScore > 0) details.push(`✨${perfectBonusScore}`);
+                             if (chainBonusScore > 0) details.push(`⛓️${chainBonusScore}`);
+                             
+                             // 괄호로 감싸고 공백으로 구분: +155 (🎯80 ✨50 ⛓️25)
+                             feedbackMsg += ` (${details.join(' ')})`;
+                         }
                     }
 
-                    if (block.isBoss) {
-                        if (isPerfect) { feedbackMsg = `BOSS PERFECT! ${feedbackMsg}`; }
-                        else { feedbackMsg = `BOSS CLEAR! ${feedbackMsg}`; }
-                    } else {
-                        if (isPerfect && this.chainCount > 0) { feedbackMsg += ` (⛓️${this.chainCount})`; }
-                    }
                     this.showFeedback(feedbackMsg, isTimeOver || wrongCount > 0 ? 'incorrect' : 'correct'); 
                     
                     this.checkStageCompletion(); 
@@ -2010,9 +2142,12 @@
                         this.reloadCount--;
                     } 
                     else {
-                        this.score = Math.max(0, this.score - this.currentReloadPenalty);
-                        this.showFeedback('SCORE -' + this.currentReloadPenalty, 'incorrect');
+                        const penaltyAmount = this.currentReloadPenalty;
+                        this.score = Math.max(0, this.score - penaltyAmount);
+                        this.showFeedback('SCORE -' + penaltyAmount, 'incorrect');
                         this.currentReloadPenalty = Math.min(20, this.currentReloadPenalty + 5);
+                        
+                        this.reloadPenaltyTotal += penaltyAmount;
                     }
 
                     this.refillData(true); 
@@ -2127,24 +2262,38 @@
                         this.openGachaModal(); 
                         return; 
                     }
+                    
                     const info = this.ITEM_INFO[item];
                     if (!info) return;
-                    this.shopModal = { show: true, item: item, title: info.title, desc: this.translate(info.desc), cost: info.cost, isMax: false };
                     
-                    if (item === 'timePlus' && this.timePlusLevel >= 1) this.shopModal.isMax = true;
-                    if (item === 'scan' && this.scanLevel >= 1) this.shopModal.isMax = true;
-                    if (item === 'amulet' && this.amuletLevel >= 1) this.shopModal.isMax = true;
-                    if (item === 'assist' && this.assistLevel >= 1) this.shopModal.isMax = true;
-                    if (item === 'reload' && this.reloadBoost >= 20) this.shopModal.isMax = true; 
+                    // [REFACTOR] 동적 레벨 체크 (stateKey 활용)
+                    const currentLevel = this[info.stateKey];
+                    const isMax = (info.maxLevel > 0 && currentLevel >= info.maxLevel);
+
+                    this.shopModal = { 
+                        show: true, 
+                        item: item, 
+                        title: info.title, 
+                        desc: this.translate(info.desc), 
+                        cost: info.cost, 
+                        isMax: isMax 
+                    };
                 },
                 closeShopModal() { this.playSound('click'); this.shopModal.show = false; },
                 confirmBuyItem() {
                     if (this.shopModal.item && !this.shopModal.isMax) { 
                         this.executePurchase(this.shopModal.item); 
-                        if (this.shopModal.item === 'reload') {
-                            if (this.reloadBoost >= 20) this.shopModal.isMax = true;
+                        
+                        // [REFACTOR] 구매 후 즉시 Max 여부 재확인
+                        const info = this.ITEM_INFO[this.shopModal.item];
+                        if (info && info.maxLevel > 0 && this[info.stateKey] >= info.maxLevel) {
+                            this.shopModal.isMax = true;
                         } else {
-                            this.closeShopModal();
+                            // [MODIFIED] Reload 아이템이 아니거나, Reload 아이템이 MAX가 아닐 경우에만 닫지 않음.
+                            // Reload 아이템이 MAX에 도달했거나, Reload가 아닌 일반 아이템인 경우 닫음.
+                            if (this.shopModal.item !== 'reload') {
+                                this.closeShopModal();
+                            }
                         }
                     } else {
                         this.closeShopModal(); 
@@ -2198,17 +2347,22 @@
                 executePurchase(item) {
                     const info = this.ITEM_INFO[item];
                     if (!info) return;
+                    
                     if (this.como >= info.cost) {
                          this.como -= info.cost;
                          this.playSound('buy'); 
-                         switch(item) {
-                            case 'reload': this.reloadBoost = Math.min(20, this.reloadBoost + 1); break; 
-                            case 'scan': this.scanLevel++; break; 
-                            case 'amulet': this.amuletLevel++; break; 
-                            case 'assist': this.assistLevel++; break; 
-                            case 'timePlus': this.timePlusLevel++; break;
-                        }
-                    } else { this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); }
+                         
+                         // [REFACTOR] stateKey를 이용해 동적 업데이트 (switch문 제거 가능)
+                         if (info.stateKey) {
+                             if (item === 'reload') {
+                                 this[info.stateKey] = Math.min(info.maxLevel, this[info.stateKey] + 1);
+                             } else {
+                                 this[info.stateKey]++; 
+                             }
+                         }
+                    } else { 
+                        this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); 
+                    }
                 },
                 startSpin() { 
                     if (this.isCrafting) return; 
@@ -2466,7 +2620,6 @@
     <div id="game-container" class="w-full max-w-md mx-auto flex flex-col items-center justify-start bg-transparent" style="height: 100vh; height: calc(var(--vh, 1vh) * 100);">
         <div x-data="game()" x-init="init()" x-cloak class="w-full h-full flex flex-col relative">
             
-            <!-- 1. Start Screen -->
             <div x-show="gameState === 'start'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center z-50 title-bg-effect overflow-hidden">
                 <template x-for="i in 8"><div class="floating-objekt" :style="`top: ${Math.random() * 80 + 10}%; left: ${Math.random() * 80 + 10}%; animation-delay: -${Math.random() * 20}s; animation-duration: ${20 + Math.random() * 10}s`"></div></template>
                 
@@ -2482,8 +2635,7 @@
                 </div>
             </div>
             
-             <!-- 2. Intro Screen -->
-            <div x-show="gameState === 'intro'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-6 z-50 bg-black/80 backdrop-blur-md">
+             <div x-show="gameState === 'intro'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-6 z-50 bg-black/80 backdrop-blur-md">
                 <div class="glass-panel briefing-panel p-6 rounded-3xl w-full h-full flex flex-col" x-show="introStep === 1" x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-x-10" x-transition:enter-end="opacity-100 translate-x-0">
                     <div class="text-center mb-8 mt-4 flex-grow flex flex-col justify-center relative z-10 overflow-hidden">
                         <div class="h-full overflow-y-auto scrollbar-thin px-2">
@@ -2551,12 +2703,10 @@
                 </div>
             </div>
 
-            <!-- 3. Game Playing Screen (SAME AS BEFORE) -->
             <div x-show="gameState === 'playing'" x-transition.opacity.duration.300ms class="w-full h-full flex flex-col relative z-10">
                 <header id="dashboard" class="w-full p-3 glass-panel shadow-lg z-20 border-t-0 rounded-b-2xl mb-1">
                     <div class="flex justify-between items-center mb-2">
                         <div class="text-left flex-shrink-0"><span class="text-xs text-gray-400 font-bold tracking-widest" id="score-anchor">SCORE</span><span class="text-2xl font-bold text-yellow-300 ml-2 text-glow-sm" x-text="score"></span></div>
-                        <!-- [UPDATE] Icon Refactor -->
                         <div class="text-center flex-grow px-2"><div class="flex justify-center items-center space-x-2">
                             <template x-if="timePlusLevel > 0"><span class="text-lg filter drop-shadow-lg" title="TIME+ (시간 연장)" x-text="ITEM_INFO.timePlus.icon"></span></template>
                             <template x-if="scanLevel > 0"><span class="text-lg filter drop-shadow-lg" title="SCAN (생일 힌트)" x-text="ITEM_INFO.scan.icon"></span></template>
@@ -2729,19 +2879,15 @@
                 <div class="glass-panel p-8 rounded-3xl w-full flex flex-col items-center">
                     <h2 class="text-4xl font-bold text-yellow-300 text-glow-sm text-center mb-4">NEW HIGH SCORE!</h2>
                     
-                    <!-- [UPDATE] 닉네임이 이미 설정된 경우 (기록 갱신 또는 교차 등록) -->
                     <template x-if="existingRecord || (playerName !== 'SSS' && playerName)">
                         <div class="text-center mb-6">
                             <p class="text-gray-400 text-lg tracking-widest mb-2">AGENT CONFIRMED</p>
                             <div class="text-3xl font-black text-white border border-white/20 bg-white/5 px-6 py-3 rounded-xl inline-block">
-                                <span x-text="playerName"></span> <!-- [UPDATE] existingRecord.name -> playerName -->
-                            </div>
-                            <!-- [UPDATE] existingRecord가 있을 때만 '갱신' 문구 표시 -->
+                                <span x-text="playerName"></span> </div>
                             <p x-show="existingRecord" class="text-green-400 text-sm font-bold mt-2">RECORD UPDATE AVAILABLE</p>
                         </div>
                     </template>
 
-                    <!-- [UPDATE] 완전 신규 랭커일 때만 닉네임 입력 (기본값 'SSS'일 때) -->
                     <template x-if="!existingRecord && (playerName === 'SSS' || !playerName)">
                         <div class="w-full flex flex-col items-center">
                             <label for="playerNameInput" class="text-lg text-gray-400 mb-2 tracking-widest">CODENAME (3 CHARS)</label>
@@ -2803,7 +2949,6 @@
                             <h3 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">SHOP</h3>
                             <div class="glass-panel px-4 py-1 rounded-full flex items-center"><span class="text-lg font-black text-purple-300 mr-2">COMO</span><span class="text-lg font-bold text-white" x-text="como"></span></div>
                         </div>
-                        <!-- [UPDATE] Icon Refactor -->
                         <div class="grid grid-cols-3 gap-2">
                             <button @click="openShopModal('objekt')" class="glass-button p-2 rounded-2xl flex items-center space-x-2 text-left" :class="{'opacity-50': como < ITEM_INFO.objekt.cost}">
                                 <span class="text-3xl" x-text="ITEM_INFO.objekt.icon"></span>
@@ -2861,7 +3006,6 @@
                         </div>
                     </div>
                     <div id="collect" class="glass-panel p-3 rounded-2xl">
-                        <!-- [UPDATE] Icon Refactor -->
                         <div class="flex justify-between items-center mb-3 px-1">
                             <h3 class="text-lg font-bold text-gray-300 tracking-wider">COLLECT (<span x-text="inventory.length"></span>/<span x-text="inventoryMaxSize"></span>)</h3>
                              <div class="flex justify-center items-center space-x-2 opacity-80">
@@ -2911,7 +3055,6 @@
                         <div id="gravity" class="glass-panel p-4 rounded-2xl relative">
                             <h3 class="text-lg font-bold text-cyan-400 mb-2 tracking-wider">GRAVITY</h3>
                             <p class="text-sm text-gray-400 mb-3">
-                                <!-- [UPDATE] S11(Overtime)일 때 텍스트 변경 -->
                                 <span x-show="stage === 11" x-text="`[GLOBAL] ${translate('gravity_desc_stage')} ${stage} ${translate('gravity_desc_suffix')}`"></span>
                                 <span x-show="stage < 11" x-text="`[LOCAL] ${translate('gravity_desc_stage')} ${stage} ${translate('gravity_desc_suffix')}`"></span>
                             </p>
@@ -2920,7 +3063,6 @@
                                     <button @click="voteForBoss(bossName)" class="glass-button p-3 rounded-xl flex flex-col justify-center items-center space-y-1">
                                         <span class="text-lg font-bold text-white" x-text="bossName"></span>
                                         <span class="font-bold text-cyan-300 text-sm">
-                                            <!-- [UPDATE] '표'를 'VOTES'로 변경 -->
                                             <span x-show="stage === 11" x-text="`${(seasonGravityVotes[bossName] || 0)} VOTES`"></span>
                                             <span x-show="stage < 11" x-text="`${(localGravityVotes[bossName] || 0)} VOTES`"></span>
                                             
@@ -2952,11 +3094,59 @@
                 </div>
             </div>
 
-            <div x-show="unlockModal.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[60] p-6" @click="closeUnlockModal()">
-                <div class="glass-panel p-6 rounded-3xl text-center border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.3)] unlock-bounce max-w-sm" @click.stop>
-                    <h3 class="text-3xl font-black text-yellow-300 mb-4" x-text="unlockModal.title"></h3>
-                    <p class="text-xl text-gray-200 whitespace-pre-line mb-8" x-text="unlockModal.message"></p>
-                    <button @click="closeUnlockModal()" class="glass-button px-8 py-3 text-purple-300 text-xl font-bold rounded-xl hover:text-white hover:border-purple-400">OK</button>
+            <div x-show="report.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[60] p-6" @click="closeStageReport()">
+                <div class="glass-panel p-6 rounded-3xl text-center border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.3)] unlock-bounce max-w-sm w-full" @click.stop>
+                    
+                    <template x-if="report.unlockMessage">
+                        <div class="mb-4 p-2 rounded-xl bg-purple-600/50 border border-purple-500/80">
+                            <h3 class="text-lg font-black text-yellow-300" x-text="report.unlockMessage"></h3>
+                        </div>
+                    </template>
+                    
+                    <h3 class="text-3xl font-black text-white mb-4 tracking-widest">
+                        <span x-show="report.stage <= 10">STAGE <span x-text="report.stage"></span> REPORT</span>
+                        <span x-show="report.stage === 11">OVERTIME REPORT</span>
+                    </h3>
+                    
+                    <div class="text-left space-y-3 bg-black/30 p-4 rounded-xl mb-6">
+                        <div class="text-2xl font-bold text-yellow-300 border-b border-white/10 pb-2 flex justify-between">
+                            <span>TOTAL SCORE</span>
+                            <span x-text="report.score"></span>
+                        </div>
+                        
+                        <div class="text-sm font-bold text-gray-400 flex justify-between">
+                            <span>CLEARED BLOCKS (NO TIME-OUT)</span>
+                            <span class="text-white"><span x-text="report.clearedBlocks"></span> / <span x-text="report.maxBlocks"></span></span>
+                        </div>
+                        
+                        <hr class="border-white/10">
+
+                        <h4 class="text-base font-bold text-green-400 mb-1">SCORE BREAKDOWN (+)</h4>
+                        <div class="pl-3 space-y-1">
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>BASE SCORE 🎯</span><span x-text="report.baseScore"></span></div>
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>PERFECT BONUS ✨</span><span x-text="report.perfectBonusScore"></span></div>
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>CHAIN BONUS ⛓️</span><span x-text="report.chainBonusScore"></span></div>
+                        </div>
+                        
+                        <hr class="border-white/10">
+
+                        <h4 class="text-base font-bold text-red-400 mb-1">PENALTY (-)</h4>
+                        <div class="pl-3 space-y-1">
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>FAIL PENALTY ❌</span><span x-text="report.failPenalty"></span></div>
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>TIME OVER PENALTY ⏳</span><span x-text="report.timeOverPenalty"></span></div>
+                            <div class="text-sm font-medium text-gray-300 flex justify-between"><span>RELOAD COST 🔄</span><span x-text="report.reloadPenalty"></span></div>
+                        </div>
+
+                        <hr class="border-white/10">
+
+                        <h4 class="text-base font-bold text-cyan-400 mb-1">STATISTICS</h4>
+                        <div class="pl-3 grid grid-cols-2 gap-2 text-sm font-medium text-gray-300">
+                            <div class="flex justify-between"><span>MAX CHAIN</span><span x-text="report.maxChain"></span></div>
+                            <div class="flex justify-between"><span>PERFECT BLOCKS</span><span x-text="report.perfectCount"></span></div>
+                        </div>
+                    </div>
+                    
+                    <button @click="closeStageReport()" class="glass-button px-8 py-3 text-purple-300 text-xl font-bold rounded-xl hover:text-white hover:border-purple-400">NEXT</button>
                 </div>
             </div>
 
@@ -2991,31 +3181,24 @@
             <div x-show="gameState === 'ranking'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-between p-4 z-50 bg-black/80 backdrop-blur-md">
                 <div class="flex-grow overflow-y-auto scrollbar-thin -mr-4 pr-4">
                     <h2 class="text-4xl font-black text-center mt-6 mb-2 text-white">REKORD ARCHIVE</h2>
-                    <!-- [UPDATE] 시즌 표시 라인 (텍스트 및 배지 크기) -->
                     <div class="text-center mb-6">
-                        <!-- [UPDATE] 텍스트 크기 text-lg -> text-xl -->
                         <span class="text-xl font-black tracking-widest text-glow-sm" 
                               :style="`color: ${currentSeason.state === 'frozen' ? '#9CA3AF' : currentSeason.color}; text-shadow: 0 0 10px ${currentSeason.state === 'frozen' ? '#9CA3AF' : currentSeason.color}80;`">
                               
-                            <!-- 1. 시즌 ID -->
                             <span x-text="currentSeason.id"></span>
                             
-                            <!-- [UPDATE] 2. 시즌 보상 (배지 크기 w-6 h-6 -> w-7 h-7, 정렬 -2px -> -3px) -->
                             <span x-show="currentSeason.state === 'active'" 
                                   title="Season Reward"
                                   class="ml-2 inline-flex items-center justify-center w-7 h-7 bg-black/30 rounded-full border border-yellow-300/30 align-middle"
-                                  style="transform: translateY(-3px);"> <!-- 텍스트와 수직 정렬을 위한 미세 조정 -->
-                                <span class="text-sm" x-text="currentSeason.badge"></span>
+                                  style="transform: translateY(-3px);"> <span class="text-sm" x-text="currentSeason.badge"></span>
                             </span>
                             
-                            <!-- 3. D-Day (시즌 중) -->
                             <span x-show="currentSeason.state === 'active'" 
                                   class="ml-2 font-bold text-cyan-400"
                                   :class="currentSeason.dDay === 1 ? 'animate-pulse' : ''"
                                   x-text="`D-${currentSeason.dDay}`">
                             </span>
                               
-                            <!-- 4. 비시즌 텍스트 -->
                             <span x-show="currentSeason.state === 'frozen'" 
                                   class="ml-2 text-sm font-bold text-gray-500"
                                   x-text="currentSeason.frozenText">
@@ -3027,9 +3210,7 @@
                         <button @click="rankingTab = 'extra'" class="w-1/2 py-3 rounded-xl text-lg font-bold transition-all" :class="rankingTab === 'extra' ? 'bg-teal-600/80 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'">OVERTIME</button>
                     </div>
 
-                    <!-- [REFACTOR] 탭 UI 통합: rankingTab에 따라 데이터 소스만 변경 -->
                     <div class="space-y-1">
-                        <!-- [REFACTOR] 탭별로 '기록 없음' 메시지 분리 -->
                         <template x-if="(rankingTab === 'main' && highScores.length === 0) || (rankingTab === 'extra' && extraHighScores.length === 0)">
                             <div class="text-center py-8">
                                 <p class="text-gray-500 text-lg mb-2">NO REKORD</p>
@@ -3037,17 +3218,14 @@
                             </div>
                         </template>
                         
-                        <!-- [REFACTOR] x-for의 대상을 (rankingTab === 'main' ? highScores : extraHighScores)로 변경 -->
                         <template x-for="(entry, index) in (rankingTab === 'main' ? highScores : extraHighScores)" :key="entry.name + entry.score + index + rankingTab">
                             <div>
-                                <!-- [UPDATE] 레이아웃 변경 (Req 1: 배지 공간) -->
                                 <div class="flex items-center justify-between glass-panel p-4 rounded-2xl text-lg z-10 relative" 
                                      :class="{'bg-yellow-500/10 border-yellow-500/30': index === 0, 'bg-gray-400/10 border-gray-400/30': index === 1, 'bg-yellow-700/10 border-yellow-700/30': index === 2}">
                                     
                                     <div class="flex items-center min-w-0">
                                         <span class="font-bold w-8 text-left flex-shrink-0" :class="{'text-yellow-300 text-glow-sm': index === 0, 'text-gray-300': index === 1, 'text-yellow-700': index === 2, 'text-gray-600': index > 2}" x-text="`${index + 1}.`"></span>
                                         
-                                        <!-- [NEW] 대표 배지 표시 (Req 1) -->
                                         <span class="text-2xl mr-2 flex-shrink-0" x-text="entry.profileBadge || DEFAULT_BADGE"></span>
                                         
                                         <span class="font-bold text-xl text-white truncate" x-text="entry.name"></span>
@@ -3058,7 +3236,6 @@
                                         <span class="text-xs text-gray-500 block" x-text="entry.season ? `SEASON: ${entry.season}` : ''"></span>
                                     </div>
                                 </div>
-                                <!-- [UPDATE] Icon Refactor -->
                                 <div x-show="(entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)) || (entry.specialCards && entry.specialCards.length > 0)"
                                      class="glass-panel p-3 rounded-b-2xl -mt-2 z-0 bg-black/30 border-t-0 border-white/10">
                                     <div class="flex items-center space-x-2 mb-2 px-1" x-show="entry.items && (entry.items.reload > 0 || entry.items.time > 0 || entry.items.scan > 0 || entry.items.amulet > 0 || entry.items.assist > 0)">
@@ -3071,7 +3248,6 @@
                                     <div x-show="entry.specialCards && entry.specialCards.length > 0" class="flex flex-wrap gap-1 px-1">
                                         <template x-for="card in entry.specialCards" :key="card.inventoryId || card.sNumber">
                                             <div x-data="objektCard(card, false)">
-                                                <!-- [수정] 아래 div 태그가 잘못 닫혀있던 오류 수정 -->
                                                 <div class="w-8 h-10 rounded-md flex shadow-sm border" :class="borderStyles" :style="`${cardStyles.background}; border-width: 1px;`">
                                                     <div class="flex-grow h-full flex flex-col items-center justify-center p-0">
                                                         <span class="text-xs font-extrabold" style="color: #000;" x-text="card.sNumber.replace('S', '')"></span>
@@ -3086,30 +3262,25 @@
                             </div>
                         </template>
                     </div>
-                    <!-- [REFACTOR] Overtime 탭을 위한 중복 코드 (x-show="rankingTab === 'extra'") 제거 -->
-                </div>
+                    </div>
                 <div class="flex-shrink-0 pt-2 bg-black/20 backdrop-blur-md -mx-4 px-4 -mb-4 pb-2 rounded-t-xl z-20">
                     <button @click="gameState = previousGameState; saveSettings()" class="glass-button w-full py-4 text-2xl font-bold rounded-2xl text-white">BACK
                     </button>
                 </div>
             </div>
-            <!-- Settings Screen -->
             <div x-show="gameState === 'settings'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-between p-4 z-50 bg-black/80 backdrop-blur-md">
                 <div class="flex-grow overflow-y-auto scrollbar-thin -mr-4 pr-4">
                     <h2 class="text-4xl font-black text-center mt-6 mb-8 text-cyan-400 text-glow-sm">SYSTEM CONFIG</h2>
                     
-                    <!-- [REFACTOR] AGENT PROFILE (Badge + Account) -->
                     <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
                         <h3 class="text-xl font-bold text-gray-300 mb-4">AGENT PROFILE</h3>
 
-                        <!-- 1. AGENT BADGE (Moved to top) -->
                         <div class="flex justify-between items-center">
                             <div>
                                 <h4 class="text-lg font-bold text-gray-300">AGENT BADGE</h4>
                                 <p class="text-sm text-gray-400 mt-1">Your selected icon for the Rekord.</p>
                             </div>
                             <div class="flex items-center space-x-3">
-                                <!-- Current Badge Display -->
                                 <div class="flex items-center justify-center bg-black/50 border border-white/10 rounded-full w-16 h-16">
                                     <span class="text-4xl" x-text="userProfile.selectedBadge || DEFAULT_BADGE"></span>
                                 </div>
@@ -3119,17 +3290,14 @@
 
                         <hr class="border-white/10 my-4">
 
-                        <!-- 2. ACCOUNT KEY (UID) (Moved to bottom) -->
                         <div>
                             <div class="flex justify-between items-center mb-4">
                                  <h4 class="text-lg font-bold text-gray-300">ACCOUNT KEY (UID)</h4>
-                                 <!-- [UPDATE] Button size reduced -->
                                  <button @click="openAccountModal()" class="glass-button px-2 py-1 rounded-lg text-sm" title="Manage Account">🔑 Manage</button>
                             </div>
                             
                             <p class="text-xs text-yellow-400/70 mb-4 font-bold">WARNING: This is your secret key. Do not share it with anyone!</p>
                             
-                            <!-- Display & Copy -->
                             <div class="flex items-center space-x-2">
                                 <div class="flex-grow bg-black/50 p-3 rounded-xl font-mono text-xs text-gray-300 truncate border border-white/10" x-text="activeUserId"></div>
                                 <button @click="copyUid()" class="glass-button px-4 py-3 rounded-xl font-bold text-cyan-300">COPY</button>
@@ -3137,7 +3305,6 @@
                         </div>
                     </div>
                     
-                    <!-- LANGUAGE SECTION -->
                     <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
                         <h3 class="text-xl font-bold text-gray-300 mb-4" x-text="translate('lang_select')"></h3>
                         <p class="text-sm text-gray-400 mb-4" x-text="translate('lang_desc')"></p>
@@ -3149,7 +3316,6 @@
                         </select>
                     </div>
                     
-                    <!-- VOLUME SECTION -->
                     <div class="glass-panel p-5 rounded-2xl mb-6 border-l-4 border-l-cyan-500">
                         <h3 class="text-xl font-bold text-gray-300 mb-4 flex items-center">VOLUME CONTROL</h3>
                         <div class="space-y-4">
@@ -3163,17 +3329,14 @@
                             </div>
                         </div>
                     </div>
-                    <!-- SUGGESTION SECTION -->
                     <div class="mb-6">
                         <button @click="openSuggestionModal()" class="glass-button w-full py-3 font-bold rounded-xl text-yellow-300 border-yellow-500/50 hover:bg-yellow-500/10">SEND SUGGESTION</button>
                     </div>
 
-                    <!-- RESET ALL DATA -->
                     <div class="mb-6">
                         <button @click="confirmReset('all')" class="glass-button w-full py-3 font-bold rounded-xl text-red-400 border-red-500/50 hover:bg-red-500/10">RESET ALL DATA</button>
                     </div>
 
-                    <!-- ABOUT SECTION -->
                     <div class="glass-panel p-5 rounded-2xl mb-6 border border-white/10">
                         <h3 class="text-xl font-bold text-gray-300 mb-4 flex items-center">ABOUT</h3>
                         <div class="space-y-3 text-sm text-gray-400">
@@ -3199,7 +3362,6 @@
                 </div>
             </div>
 
-            <!-- Suggestion Modal -->
             <div x-show="suggestionModal.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[65] p-6" @click="closeSuggestionModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
                     <h3 class="text-2xl font-bold text-yellow-300 mb-4">SEND SUGGESTION</h3>
@@ -3219,7 +3381,6 @@
                 </div>
             </div>
 
-            <!-- [NEW] Badge Select Modal (Req 5) -->
             <div x-show="badgeSelectModal.show" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[65] p-6" @click="closeBadgeModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
                     <h3 class="text-2xl font-bold text-cyan-300 mb-4">SELECT AGENT BADGE</h3>
@@ -3229,14 +3390,12 @@
                     
                     <div x-show="!isProfileLoading" class="max-h-64 overflow-y-auto scrollbar-thin bg-black/30 rounded-xl p-4 border border-white/10 mb-6">
                         <div class="grid grid-cols-5 gap-3">
-                            <!-- 기본 배지는 항상 선택 가능 -->
                             <button @click="selectBadge(DEFAULT_BADGE)" 
                                     class="glass-button w-full aspect-square flex items-center justify-center rounded-xl text-4xl transition-transform hover:scale-110"
                                     :class="userProfile.selectedBadge === DEFAULT_BADGE ? 'ring-2 ring-cyan-400' : 'opacity-70'">
                                 <span x-text="DEFAULT_BADGE"></span>
                             </button>
                             
-                            <!-- 획득한 배지 루프 -->
                             <template x-for="badge in userProfile.unlockedBadges.filter(b => b !== DEFAULT_BADGE)" :key="badge">
                                 <button @click="selectBadge(badge)" 
                                         class="glass-button w-full aspect-square flex items-center justify-center rounded-xl text-4xl transition-transform hover:scale-110"
@@ -3251,12 +3410,10 @@
                 </div>
             </div>
 
-            <!-- [NEW] Account Key Modal (Add after badgeSelectModal) -->
             <div x-show="accountModalShow" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/70 backdrop-blur-sm z-[65] p-6" @click="closeAccountModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
                     <h3 class="text-2xl font-bold text-cyan-300 mb-4">ACCOUNT MANAGEMENT</h3>
                     
-                    <!-- Load Account (Moved from settings) -->
                     <div class="border-b border-white/10 pb-4">
                         <p class="text-sm text-gray-400 mb-2 font-bold">IMPORT ACCOUNT KEY</p>
                         <p class="text-xs text-yellow-400/70 mb-3">Paste a previously copied UID to load your account.</p>
@@ -3266,7 +3423,6 @@
                         </div>
                     </div>
 
-                    <!-- Reset Account (Moved from settings) -->
                     <div class="mt-4 text-center">
                         <p class="text-sm text-gray-400 mb-2 font-bold">RESET ACCOUNT</p>
                         <p class="text-xs text-gray-500 mb-3">This will log you out of the current UID and return to a new guest account.</p>
@@ -3302,7 +3458,6 @@
                         
                         <div class="p-3 bg-white/5 rounded-xl">
                             <h4 class="text-lg font-bold text-gray-300 mb-2">PERMANENT UPGRADES</h4>
-                            <!-- [UPDATE] Icon Refactoring -->
                             <div class="flex flex-wrap gap-3 text-2xl">
                                 <template x-if="timePlusLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.timePlus.title"><span x-text="ITEM_INFO.timePlus.icon"></span> TIME+ Lv.1</span></template>
                                 <template x-if="scanLevel > 0"><span class="bg-gray-700/50 p-2 rounded-lg" :title="ITEM_INFO.scan.title"><span x-text="ITEM_INFO.scan.icon"></span> SCAN Lv.1</span></template>
@@ -3329,12 +3484,10 @@
                         </div>
 
                         <div class="p-3 bg-white/5 rounded-xl">
-                            <!-- 제목 변경: S1 -> ST1 -->
                             <h4 class="text-lg font-bold text-gray-300 mb-2">STAGE GRADES (ST1 - ST10)</h4>
                             <div class="grid grid-cols-5 gap-2 text-center">
                                 <template x-for="entry in stageGrades" :key="entry.stage">
                                     <div class="flex flex-col p-1 rounded-lg bg-black/30 border border-white/10">
-                                        <!-- 표기 변경: S -> ST -->
                                         <span class="text-xs text-gray-400 font-bold">ST<span x-text="entry.stage"></span></span>
                                         <span class="text-2xl font-black" 
                                             :class="{
@@ -3485,12 +3638,10 @@
                     
                     <template x-if="gachaState === 'result'">
                         <div class="flex flex-col items-center mt-12">
-                            <!-- v10.198 FIX: text-white 제거 (Cyan/Purple 충돌 방지) -->
                             <h3 class="text-3xl font-black mb-2 text-glow-sm" 
                                 :class="gachaResultCard.type === 'joker_card' ? 'text-purple-400' : 'text-cyan-400'"
                                 x-text="gachaResultCard.type === 'joker_card' ? 'SUPER RARE!' : 'NEW OBJEKT!'">
                             </h3>
-                            <!-- [UPDATE] S번호 / 이름 텍스트에 멤버 상징색 적용 -->
                             <p class="text-xl font-bold mb-8 text-glow-sm"
                                :style="gachaResultCard.type === 'joker_card' ? 'color: #D8B4FE' : `color: ${gachaResultCard.color}`"
                                x-text="`${gachaResultCard.sNumber} / ${gachaResultCard.kor}`">
