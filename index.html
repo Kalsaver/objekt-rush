@@ -1710,18 +1710,18 @@
                         return;
                     }
 
+                    // [FIX] 기존 기록이 없어서 새로 등록하는 경우 (신규 유저 OR 교차 등록)
                     if (!this.existingRecord) {
                         if (this.playerName.length !== 3) {
-                             this.showFeedback('MUST BE 3 CHARS', 'incorrect');
-                             this.playSound('fail');
-                             return;
+                                this.showFeedback('MUST BE 3 CHARS', 'incorrect');
+                                this.playSound('fail');
+                                return;
                         }
                         
-                        // 금지어 체크 (정확히 일치하는지 확인)
                         if (this.bannedNames.includes(this.playerName)) {
-                             this.showFeedback('INVALID NICKNAME', 'incorrect');
-                             this.playSound('fail');
-                             return;
+                                this.showFeedback('INVALID NICKNAME', 'incorrect');
+                                this.playSound('fail');
+                                return;
                         }
 
                         // 중복 닉네임 체크 (같은 시즌 내)
@@ -1731,10 +1731,17 @@
                             window.fbWhere("name", "==", this.playerName)
                         );
                         const snapshot = await window.fbGetDocs(q);
+                        
+                        // [CRITICAL FIX] 닉네임이 존재하더라도, 그 주인이 '나(activeUserId)'라면 중복이 아님 (교차 등록 허용)
+                        // snapshot이 비어있지 않은데, 그 중 내 ID가 아닌 문서가 하나라도 있다면 '타인이 선점한 것'으로 간주
                         if (!snapshot.empty) {
-                             this.showFeedback('NAME ALREADY TAKEN', 'incorrect');
-                             this.playSound('fail');
-                             return;
+                            const isTakenByOther = snapshot.docs.some(doc => doc.data().userId !== this.activeUserId);
+                            
+                            if (isTakenByOther) {
+                                this.showFeedback('NAME ALREADY TAKEN', 'incorrect');
+                                this.playSound('fail');
+                                return;
+                            }
                         }
                     }
 
@@ -1763,7 +1770,7 @@
                         items: itemsSnapshot, 
                         specialCards: specialCardsSnapshot, 
                         season: this.currentSeason.id, 
-                        userId: this.activeUserId, // [IMPORTANT] User ID 저장
+                        userId: this.activeUserId, 
                         timestamp: window.fbServerTimestamp(),
                         type: (this.stage === 11) ? 'extra' : 'main',
                         profileBadge: this.userProfile.selectedBadge || this.DEFAULT_BADGE
@@ -1776,11 +1783,11 @@
                             await window.fbUpdateDoc(docRef, scoreData);
                             this.showFeedback('RECORD UPDATED!', 'correct');
                         } else {
-                            // Create New
+                            // Create New (교차 등록 포함)
                             await window.fbAddDoc(window.fbCollection(window.fbDb, "ranks"), scoreData);
+                            this.showFeedback('AGENT REGISTERED!', 'correct'); // 피드백 메시지 구체화
                         }
                         
-                        // 로컬 UI 반영 로직은 생략 (서버에서 다시 불러오도록 유도하거나 단순 종료)
                         setTimeout(() => {
                             if (this.stage === 11) {
                                 this.gameState = 'intermission';
@@ -2879,16 +2886,25 @@
                 <div class="glass-panel p-8 rounded-3xl w-full flex flex-col items-center">
                     <h2 class="text-4xl font-bold text-yellow-300 text-glow-sm text-center mb-4">NEW HIGH SCORE!</h2>
                     
-                    <template x-if="existingRecord || (playerName !== 'SSS' && playerName)">
+                    <template x-if="playerName !== 'SSS' && playerName">
                         <div class="text-center mb-6">
                             <p class="text-gray-400 text-lg tracking-widest mb-2">AGENT CONFIRMED</p>
                             <div class="text-3xl font-black text-white border border-white/20 bg-white/5 px-6 py-3 rounded-xl inline-block">
-                                <span x-text="playerName"></span> </div>
-                            <p x-show="existingRecord" class="text-green-400 text-sm font-bold mt-2">RECORD UPDATE AVAILABLE</p>
+                                <span x-text="playerName"></span>
+                            </div>
+                            
+                            <div class="mt-2">
+                                <template x-if="existingRecord">
+                                    <p class="text-green-400 text-sm font-bold">RECORD UPDATE AVAILABLE</p>
+                                </template>
+                                <template x-if="!existingRecord">
+                                    <p class="text-cyan-400 text-sm font-bold">NEW SECTOR REGISTRATION</p>
+                                </template>
+                            </div>
                         </div>
                     </template>
 
-                    <template x-if="!existingRecord && (playerName === 'SSS' || !playerName)">
+                    <template x-if="playerName === 'SSS' || !playerName">
                         <div class="w-full flex flex-col items-center">
                             <label for="playerNameInput" class="text-lg text-gray-400 mb-2 tracking-widest">CODENAME (3 CHARS)</label>
                             <input type="text" id="playerNameInput" x-model="playerName" @input="playerName = playerName.toUpperCase().replace(/[^A-Z0-9]/g, '')" maxlength="3" class="w-40 h-20 bg-black/50 border-2 border-white/20 text-white text-5xl font-bold text-center rounded-2xl focus:outline-none focus:border-purple-500 mb-8 tracking-widest">
@@ -2904,7 +2920,7 @@
                             :disabled="currentSeason.state === 'frozen'"
                             class="glass-button w-full py-4 text-2xl font-bold rounded-2xl"
                             :class="currentSeason.state === 'frozen' ? 'opacity-50 cursor-not-allowed text-gray-500' : 'btn-green-glow text-green-400'">
-                        <span x-text="currentSeason.state === 'frozen' ? 'SEASON CLOSED' : (existingRecord ? 'UPDATE RECORD' : 'REGISTER AGENT')"></span>
+                        <span x-text="currentSeason.state === 'frozen' ? 'SEASON CLOSED' : (existingRecord ? 'UPDATE RECORD' : (playerName !== 'SSS' ? 'REGISTER RECORD' : 'REGISTER AGENT'))"></span>
                     </button>
                     <p x-show="currentSeason.state === 'frozen'" class="text-red-400 mt-2 text-sm font-bold">Rankings are frozen (25th ~ End of Month)</p>
                 </div>
