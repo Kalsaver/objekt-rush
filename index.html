@@ -246,42 +246,16 @@
             box-shadow: inset 0 0 100px rgba(0,0,0,0.8), 0 0 30px rgba(0,0,0,0.5);
             position: relative; overflow: hidden;
         }
-        .briefing-panel::before {
-            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-            background: linear-gradient(90deg, transparent, #ef4444, transparent);
-            animation: scan-line 3s ease-in-out infinite; opacity: 0.7;
-        }
+        
         .briefing-panel::after {
             content: 'TOP SECRET // CLASSIFIED'; position: absolute; top: 1rem; right: 1.5rem;
             font-size: 0.7rem; font-weight: 900; color: #ef4444; letter-spacing: 0.2em; opacity: 0.6;
             border: 2px solid #ef4444; padding: 0.2rem 0.5rem; transform: rotate(-5deg);
             z-index: 50; pointer-events: none;
         }
-        @keyframes scan-line { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
         
         /* --- SCANLINE EFFECT --- */
         #order-area { position: relative; overflow: hidden; }
-        #order-area::after {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: repeating-linear-gradient(
-                to bottom,
-                rgba(0, 0, 0, 0.2),
-                rgba(0, 0, 0, 0.3) 1px,
-                transparent 1px,
-                transparent 2px
-            );
-            pointer-events: none;
-            z-index: 10;
-            opacity: 0.8;
-            animation: monitor-flicker 0.1s infinite step-end;
-        }
-        @keyframes monitor-flicker {
-            0% { opacity: 0.8; }
-            50% { opacity: 0.75; }
-            100% { opacity: 0.8; }
-        }
 
         .ending-screen-overlay::before {
             content: '';
@@ -350,14 +324,28 @@
             PERFECT_BASE_MULTIPLIER: 5, 
             BOSS_PERFECT_MULTIPLIER: 10,
             FAIL_PENALTY: 20, 
-            TIME_OVER_PENALTY: 5, 
+            TIME_OVER_PENALTY: 5,
+            CHAIN_BONUS: 5, // [NEW] 체인당 추가 점수
         };
 
-        // [NEW] 밸런스 및 확률 설정 (여기서만 수치를 바꾸면 적용됨)
         const GAME_BALANCE = {
-            CHANCE_AMULET: 0.3,  // 아뮬렛 발동 확률 (30%)
-            CHANCE_ASSIST: 0.4,  // 어시스트 발동 확률 (40%)
-            CHANCE_JOKER: 0.5   // 조커(가챠) 등장 확률 (1%)
+            // 확률
+            CHANCE_AMULET: 0.3,  // 30%
+            CHANCE_ASSIST: 0.4,  // 40%
+            CHANCE_JOKER: 0.01,  // 1% (실제 서비스용)
+            
+            // [NEW] 시간 및 난이도 설정 (ms)
+            TIME_BASE_NORMAL: 10000, // 일반 블록 기본 시간
+            TIME_BASE_BOSS: 15000,   // 보스 블록 기본 시간
+            TIME_PER_MEMBER: 5000,   // 멤버 1명당 추가 시간
+            TIME_ITEM_BONUS: 2000,   // TIME+ 아이템 효과
+            
+            // [NEW] 리로드 페널티 설정
+            RELOAD_PENALTY_STEP: 5,  // 차감 점수 증가량
+            RELOAD_PENALTY_MAX: 20,  // 최대 차감 점수
+            
+            // [NEW] 생성 설정
+            MAX_BLOCK_MEMBERS: 4     // 일반 블록 최대 멤버 수
         };
 
         const GAME_ITEM_INFO = {
@@ -1930,19 +1918,26 @@
                         const rand = Math.random();
                         if (rand < config.birthdayChance) chosenType = 'birthday'; else chosenType = 'sNumber';
                     }
+                    
                     let members = []; let blockSize = 1; let blockTime = 15000; let memberPool = [...this.memberData];
+                    
                     if (chosenType === 'dimension') {
                         members = this.memberData.filter(m => m.dimensions.includes(blockLabel));
                         blockSize = members.length; 
-                        blockTime = 15000 + (blockSize * 5000); 
+                        // [REFACTOR] Use Constants for Boss Time
+                        blockTime = GAME_BALANCE.TIME_BASE_BOSS + (blockSize * GAME_BALANCE.TIME_PER_MEMBER); 
                     } else {
-                        blockSize = Math.floor(Math.random() * 4) + 1; blockTime = 10000 + (blockSize * 5000); 
+                        // [REFACTOR] Use Constants for Normal Time & Max Members
+                        blockSize = Math.floor(Math.random() * GAME_BALANCE.MAX_BLOCK_MEMBERS) + 1; 
+                        blockTime = GAME_BALANCE.TIME_BASE_NORMAL + (blockSize * GAME_BALANCE.TIME_PER_MEMBER); 
+                        
                         for (let i = 0; i < blockSize; i++) { if (memberPool.length === 0) break; const index = Math.floor(Math.random() * memberPool.length); members.push(memberPool.splice(index, 1)[0]); }
                     }
                     
                     blockTime += config.timeBonus || 0; 
                     
-                    if (this.timePlusLevel > 0) blockTime += 2000; 
+                    // [REFACTOR] Use Constant for Time Item
+                    if (this.timePlusLevel > 0) blockTime += GAME_BALANCE.TIME_ITEM_BONUS; 
                     
                     this.currentBlock = { id: Date.now() + Math.random(), members: members, bundleType: chosenType, bundleLabel: blockLabel, timeLimit: blockTime, timer: blockTime, isBoss: isBoss };
                     this.completedCards = []; this.selectedData = null; this.selectedInventoryCard = null; this.updateMatchedOrders(); this.startBlockTimer(); 
@@ -2070,7 +2065,8 @@
                         this.consecutivePerfects++;
                         this.chainCount = Math.max(0, this.consecutivePerfects - 1); 
                         if (this.chainCount > 0) { 
-                            chainBonusScore = this.chainCount * 5; 
+                            // [REFACTOR] Use Constant: 5 -> GAME_SCORING.CHAIN_BONUS
+                            chainBonusScore = this.chainCount * GAME_SCORING.CHAIN_BONUS; 
                             this.playSound('chain'); 
                         }
                         this.playSound('perfect');
@@ -2234,7 +2230,9 @@
                         const penaltyAmount = this.currentReloadPenalty;
                         this.score = Math.max(0, this.score - penaltyAmount);
                         this.showFeedback('SCORE -' + penaltyAmount, 'incorrect');
-                        this.currentReloadPenalty = Math.min(20, this.currentReloadPenalty + 5);
+                        
+                        // [REFACTOR] Use Constants for Penalty Step & Max
+                        this.currentReloadPenalty = Math.min(GAME_BALANCE.RELOAD_PENALTY_MAX, this.currentReloadPenalty + GAME_BALANCE.RELOAD_PENALTY_STEP);
                         
                         this.reloadPenaltyTotal += penaltyAmount;
                     }
@@ -2490,17 +2488,22 @@
                 selectSpinCard(card) {
                     if (this.spinResult) return; 
                     this.playSound('input'); 
-                    this.spinResult = card; // 결과 카드 설정 (이것이 화면에 표시됨)
+                    this.spinResult = card; 
                     
-                    // 1. 인벤토리 처리 (try-catch로 보호)
                     try {
                         const index = this.inventory.findIndex(c => c.inventoryId === this.selectedInventoryCardForSpin.inventoryId);
                         if (index > -1) {
                             if (card.type !== 'fail_card') { 
                                 // 성공: 카드 교체
                                 this.inventory.splice(index, 1, card); 
-                                this.showFeedback(`${card.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct'); 
-                                if (!card.isSpecial) this.checkCraftingAvailability(card); 
+                                
+                                // [MODIFIED] 스페셜 카드 획득 시 별도 알림 표시
+                                if (card.isSpecial) {
+                                    this.showFeedback(`✨ ${card.sNumber} SPECIAL! ✨`, 'correct');
+                                } else {
+                                    this.showFeedback(`${card.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct'); 
+                                    this.checkCraftingAvailability(card); 
+                                }
                             } else { 
                                 // 실패: 카드 소멸
                                 this.inventory.splice(index, 1); 
@@ -2511,9 +2514,6 @@
                         console.error("Spin Logic Error:", e);
                         this.showFeedback("Data Error", 'incorrect');
                     }
-                    
-                    // [REMOVED] 자동 종료 타이머(setTimeout) 삭제됨.
-                    // 이제 유저가 버튼을 눌러서 나가야 함.
                 },
 
                 // [NEW] 스핀 결과 확인 및 종료 (CONFIRM 버튼)
@@ -2744,20 +2744,26 @@
     <div id="game-container" class="w-full max-w-md mx-auto flex flex-col items-center justify-start bg-transparent" style="height: 100vh; height: calc(var(--vh, 1vh) * 100);">
         <div x-data="game()" x-init="init()" x-cloak class="w-full h-full flex flex-col relative">
             
-            <div x-show="gameState === 'start'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center z-50 title-bg-effect overflow-hidden">
-                <template x-for="i in 8"><div class="floating-objekt" :style="`top: ${Math.random() * 80 + 10}%; left: ${Math.random() * 80 + 10}%; animation-delay: -${Math.random() * 20}s; animation-duration: ${20 + Math.random() * 10}s`"></div></template>
-                
-                <div class="z-10 text-center p-8 flex flex-col items-center w-full">
-                    <h1 class="text-7xl font-black mb-2 tracking-tighter leading-none"><span class="holo-text">OBJEKT</span><br><span class="text-white">RUSH</span></h1>
-                    <p class="text-xl text-gray-300 font-semibold tracking-widest mb-12 opacity-80">MH AGENT: RECRUIT</p>
+            <template x-if="gameState === 'start'">
+                <div class="absolute inset-0 w-full h-full flex flex-col justify-center items-center z-50 title-bg-effect overflow-hidden"
+                     x-transition.opacity.duration.500ms>
                     
-                    <button @click="startGame(false)" class="glass-button w-full py-4 px-6 mb-4 rounded-xl text-2xl font-bold text-white">WORK START</button>
-                    <div class="grid grid-cols-2 gap-4 w-full">
-                        <button @click="showRanking()" class="glass-button w-full py-4 px-6 rounded-xl text-xl font-bold text-gray-300 hover:text-white">REKORD</button>
-                        <button @click="showSettings()" class="glass-button w-full py-4 px-6 rounded-xl text-xl font-bold text-gray-300 hover:text-white">CONFIG</button>
+                    <template x-for="i in 8">
+                        <div class="floating-objekt" :style="`top: ${Math.random() * 80 + 10}%; left: ${Math.random() * 80 + 10}%; animation-delay: -${Math.random() * 20}s; animation-duration: ${20 + Math.random() * 10}s`"></div>
+                    </template>
+                    
+                    <div class="z-10 text-center p-8 flex flex-col items-center w-full">
+                        <h1 class="text-7xl font-black mb-2 tracking-tighter leading-none"><span class="holo-text">OBJEKT</span><br><span class="text-white">RUSH</span></h1>
+                        <p class="text-xl text-gray-300 font-semibold tracking-widest mb-12 opacity-80">MH AGENT: RECRUIT</p>
+                        
+                        <button @click="startGame(false)" class="glass-button w-full py-4 px-6 mb-4 rounded-xl text-2xl font-bold text-white">WORK START</button>
+                        <div class="grid grid-cols-2 gap-4 w-full">
+                            <button @click="showRanking()" class="glass-button w-full py-4 px-6 rounded-xl text-xl font-bold text-gray-300 hover:text-white">REKORD</button>
+                            <button @click="showSettings()" class="glass-button w-full py-4 px-6 rounded-xl text-xl font-bold text-gray-300 hover:text-white">CONFIG</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </template>
             
              <div x-show="gameState === 'intro'" x-transition.opacity.duration.500ms class="absolute inset-0 w-full h-full flex flex-col justify-center items-center p-6 z-50 bg-black/80 backdrop-blur-md">
                 <div class="glass-panel briefing-panel p-6 rounded-3xl w-full h-full flex flex-col" x-show="introStep === 1" x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 translate-x-10" x-transition:enter-end="opacity-100 translate-x-0">
@@ -3896,77 +3902,77 @@
                 </div>
             </div>
 
-            <div x-show="gameState === 'gacha'" x-transition class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/80 backdrop-blur-md z-[60] overflow-hidden">
-                
-                <div x-show="gachaState === 'joker_flash'" class="flash-screen-gold"></div>
+            <template x-if="gameState === 'gacha'">
+                <div class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/80 backdrop-blur-md z-[60] overflow-hidden"
+                     x-transition>
+                    
+                    <div x-show="gachaState === 'joker_flash'" class="flash-screen-gold"></div>
 
-                <div class="relative flex flex-col items-center z-10">
-                    <h2 class="text-3xl font-bold mb-8" x-show="gachaState === 'ready'">
-                        <span class="holo-text">OBJEKT</span><span class="text-white"> PACK</span>
-                    </h2>
-                    <div class="booster-pack-container flex flex-col items-center">
-                        <template x-if="gachaState === 'ready' || gachaState === 'opening' || gachaState === 'joker_flash'">
-                             <button @click="startGachaAnimation()" :disabled="gachaState !== 'ready'" 
-                                     class="booster-pack cursor-pointer" 
-                                     :class="(gachaState === 'opening' || gachaState === 'joker_flash') ? 'pack-shaking' : ''">
-                                <span class="text-purple-300 font-black" x-text="ITEM_INFO.objekt.icon"></span>
-                            </button>
-                        </template>
-                        
-                        <div x-show="gachaState === 'opening'" 
-                             class="absolute inset-0 z-10 w-full h-full flash-overlay rounded-3xl pointer-events-none">
-                        </div>
+                    <div class="relative flex flex-col items-center z-10">
+                        <h2 class="text-3xl font-bold mb-8" x-show="gachaState === 'ready'">
+                            <span class="holo-text">OBJEKT</span><span class="text-white"> PACK</span>
+                        </h2>
+                        <div class="booster-pack-container flex flex-col items-center">
+                            <template x-if="gachaState === 'ready' || gachaState === 'opening' || gachaState === 'joker_flash'">
+                                 <button @click="startGachaAnimation()" :disabled="gachaState !== 'ready'" 
+                                         class="booster-pack cursor-pointer" 
+                                         :class="(gachaState === 'opening' || gachaState === 'joker_flash') ? 'pack-shaking' : ''">
+                                    <span class="text-purple-300 font-black" x-text="ITEM_INFO.objekt.icon"></span>
+                                </button>
+                            </template>
+                            
+                            <div :key="gachaState"
+                                 x-show="gachaState === 'opening' || gachaState === 'joker_flash'" 
+                                 class="absolute inset-0 z-10 w-full h-full flash-overlay rounded-3xl pointer-events-none">
+                            </div>
 
-                        <div x-show="gachaState === 'joker_flash'" 
-                             class="absolute inset-0 z-10 w-full h-full flash-overlay rounded-3xl pointer-events-none">
-                        </div>
-
-                        <template x-if="gachaState === 'ready'">
-                            <p class="text-gray-400 mt-4 text-xl font-bold" :class="como < 1 ? 'text-red-400' : 'text-purple-300'" x-text="`1 COMO`"></p>
-                        </template>
-                        
-                        <template x-if="gachaState === 'result'">
-                            <div class="card-reveal transform scale-150 origin-bottom-center">
-                                <div x-data="objektCard(gachaResultCard)">
-                                    <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" 
-                                        :class="borderStyles" 
-                                        :style="cardStyles.background">
-                                        <div class="flex-grow h-full flex flex-col items-center justify-center p-1">
-                                            <span class="text-lg font-extrabold" :style="cardStyles.text" x-text="gachaResultCard.sNumber"></span>
-                                            <span class="text-xs font-bold" :style="cardStyles.text" x-text="gachaResultCard.kor"></span>
-                                        </div>
-                                        <div class="flex-shrink-0 w-1/5 h-full bg-black/30 flex items-center justify-center rounded-r-md">
-                                            <span class="text-xs font-bold text-white writing-mode-v-rl" x-text="gachaResultCard.eng"></span>
+                            <template x-if="gachaState === 'ready'">
+                                <p class="text-gray-400 mt-4 text-xl font-bold" :class="como < 1 ? 'text-red-400' : 'text-purple-300'" x-text="`1 COMO`"></p>
+                            </template>
+                            
+                            <template x-if="gachaState === 'result'">
+                                <div class="card-reveal transform scale-150 origin-bottom-center">
+                                    <div x-data="objektCard(gachaResultCard)">
+                                        <div class="flex-shrink-0 w-16 h-20 rounded-lg flex shadow-md border-2" 
+                                            :class="borderStyles" 
+                                            :style="cardStyles.background">
+                                            <div class="flex-grow h-full flex flex-col items-center justify-center p-1">
+                                                <span class="text-lg font-extrabold" :style="cardStyles.text" x-text="gachaResultCard.sNumber"></span>
+                                                <span class="text-xs font-bold" :style="cardStyles.text" x-text="gachaResultCard.kor"></span>
+                                            </div>
+                                            <div class="flex-shrink-0 w-1/5 h-full bg-black/30 flex items-center justify-center rounded-r-md">
+                                                <span class="text-xs font-bold text-white writing-mode-v-rl" x-text="gachaResultCard.eng"></span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
+                            </template>
+                        </div>
+                        
+                        <template x-if="gachaState === 'result'">
+                            <div class="flex flex-col items-center mt-12">
+                                <h3 class="text-3xl font-black mb-2 text-glow-sm" 
+                                    :class="gachaResultCard.type === 'joker_card' ? 'text-yellow-300' : 'text-cyan-400'"
+                                    x-text="gachaResultCard.type === 'joker_card' ? 'SUPER RARE!' : 'NEW OBJEKT!'">
+                                </h3>
+                                
+                                <p class="text-xl font-bold mb-8 text-glow-sm"
+                                   :style="gachaResultCard.type === 'joker_card' ? 'color: #D8B4FE' : `color: ${gachaResultCard.color}`"
+                                   x-text="`${gachaResultCard.sNumber} / ${gachaResultCard.kor}`">
+                                </p>
+                                <button @click="confirmGachaResult()" class="glass-button btn-green-glow py-4 px-12 text-2xl font-bold rounded-2xl text-green-400">OK</button>
                             </div>
                         </template>
-                    </div>
-                    
-                    <template x-if="gachaState === 'result'">
-                        <div class="flex flex-col items-center mt-12">
-                            <h3 class="text-3xl font-black mb-2 text-glow-sm" 
-                                :class="gachaResultCard.type === 'joker_card' ? 'text-yellow-300' : 'text-cyan-400'"
-                                x-text="gachaResultCard.type === 'joker_card' ? 'SUPER RARE!' : 'NEW OBJEKT!'">
-                            </h3>
-                            
-                            <p class="text-xl font-bold mb-8 text-glow-sm"
-                               :style="gachaResultCard.type === 'joker_card' ? 'color: #D8B4FE' : `color: ${gachaResultCard.color}`"
-                               x-text="`${gachaResultCard.sNumber} / ${gachaResultCard.kor}`">
-                            </p>
-                            <button @click="confirmGachaResult()" class="glass-button btn-green-glow py-4 px-12 text-2xl font-bold rounded-2xl text-green-400">OK</button>
-                        </div>
-                    </template>
-                    
-                    <template x-if="gachaState === 'ready'">
-                        <div class="mt-8 w-64">
-                            <button @click="closeGachaModal()" class="glass-button w-full py-3 text-lg font-bold rounded-xl text-white">BACK</button>
-                        </div>
-                    </template>
+                        
+                        <template x-if="gachaState === 'ready'">
+                            <div class="mt-8 w-64">
+                                <button @click="closeGachaModal()" class="glass-button w-full py-3 text-lg font-bold rounded-xl text-white">BACK</button>
+                            </div>
+                        </template>
 
+                    </div>
                 </div>
-            </div>
+            </template>
 
         </div>
     </div>
