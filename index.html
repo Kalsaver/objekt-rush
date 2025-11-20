@@ -348,6 +348,16 @@
             MAX_BLOCK_MEMBERS: 4     // 일반 블록 최대 멤버 수
         };
 
+        // [NEW] 저장 데이터 키 관리 (차기작에서 GAME_ID만 바꾸면 됨)
+        const GAME_ID = 'objektRush'; 
+        const SAVE_KEY = {
+            UID: `${GAME_ID}CustomUid`,
+            LANG: `${GAME_ID}Language`,
+            BGM: `${GAME_ID}BGMVolume`,
+            SFX: `${GAME_ID}SFXVolume`,
+            BADGE_CHECK_PREFIX: `${GAME_ID}_badge_checked_`
+        };
+
         const GAME_ITEM_INFO = {
             objekt: { title: 'OBJEKT PACK', desc: '', cost: 1, icon: '🃏', maxLevel: 0 }, // 0은 무제한/소모품 의미
             reload: { title: 'RELOAD CHARGE', desc: 'item_reload_desc', cost: 1, icon: '🔄', maxLevel: 20, stateKey: 'reloadBoost' },
@@ -574,6 +584,12 @@
         ];
 
         function game() {
+            // [OPTIMIZATION] Audio Objects moved OUT of reactive scope
+            // Alpine이 감시하지 않도록 클로저 변수로 선언합니다.
+            const audioSounds = {};
+            const audioBgm = {};
+            let currentAudioBgm = null;
+
             return {
                 // --- STATE ---
                 gameState: 'start', 
@@ -608,16 +624,13 @@
                 lastStageGrade: 'C',
                 bossJComment: '',
                 endingType: 'C',
-                // [MODIFIED] stageGrades는 이제 최종 Stage Grade 기록용으로만 사용 (S1~S10)
                 stageGrades: [], 
                 
-                // [NEW] 임시 저장소: 현재 스테이지의 모든 블록 상세 점수 기록
+                // Current Stage Details
                 currentStageBlockDetails: [],
-                
-                // [NEW] 리로드 총 감점액 추적
                 reloadPenaltyTotal: 0, 
 
-                // [NEW] Stage Report Data
+                // Stage Report Data
                 report: {
                     show: false,
                     stage: 0,
@@ -635,7 +648,7 @@
                     unlockMessage: '',
                 },
 
-                // [NEW] Ending Final Report Data (엔딩 화면용 집계 데이터)
+                // Ending Final Report Data
                 finalReport: {
                     baseScore: 0,
                     perfectBonusScore: 0,
@@ -671,9 +684,8 @@
                 reloadCount: 10, 
                 currentReloadPenalty: 5,
                 
-               // Modals
+                // Modals
                 shopModal: { show: false, item: '', title: '', desc: '', cost: 0, isMax: false },
-                // [REMOVED] unlockModal: { show: false, title: '', message: '' }, // Stage Report Modal로 대체됨
                 returnConfirmModal: { show: false },
                 resetConfirmModal: { show: false, type: 'all' },
                 feedback: { show: false, message: '', type: 'correct', timer: null },
@@ -699,13 +711,14 @@
                 highScores: [],
                 extraHighScores: [],
                 playerName: '',
-                existingRecord: null, // Stores current user's record for update
+                existingRecord: null, 
                 
-                // User Account (UID Management)
-                inputUid: '', // For input field in settings
+                // User Account
+                inputUid: '', 
                 currentUid: 'CONNECTING...', 
                 get activeUserId() {
-                    return localStorage.getItem('objektRushCustomUid') || this.currentUid;
+                    // [REFACTOR] Use SAVE_KEY.UID
+                    return localStorage.getItem(SAVE_KEY.UID) || this.currentUid;
                 },
                 
                 userProfile: {
@@ -719,10 +732,7 @@
                 seasonGravityVotes: {},
                 seasonGravityListener: null,
                 
-                // Audio
-                sounds: {}, 
-                bgm: {}, 
-                currentBGM: null, 
+                // Audio Settings (Volume values are reactive)
                 bgmVolume: 0.3, 
                 sfxVolume: 0.5,
 
@@ -746,29 +756,24 @@
                 ],
                 translations: {}, 
 
-                // Banned Nicknames (Simple Blacklist)
+                // Constants & Data
                 bannedNames: GAME_BANNED_NAMES,
-                
-                // --- CONSTANTS ---
                 DEFAULT_BADGE: GAME_DEFAULT_BADGE,
                 SEASON_BADGE_TABLE: GAME_SEASON_BADGE_TABLE,
-                ITEM_INFO: GAME_ITEM_INFO, // 기존 유지
+                ITEM_INFO: GAME_ITEM_INFO, 
                 BOSS_COMMENTS: GAME_BOSS_COMMENTS,
                 ENDING_MESSAGES: GAME_ENDING_MESSAGES,
                 
                 stageConfig: GAME_STAGE_CONFIG,
                 bossPools: GAME_BOSS_POOLS,
 
+                // [OPTIMIZATION] Only keep data needed for Intro UI looping
+                // Modhaus, Artms, Friend data removed (Accessed via global const)
                 memberData: [],
                 dimensionData: [],
-                modhausData: [],
-                artmsData: [],
-                friendData: [],
 
                 // --- METHODS ---
                 init() { 
-                    // [FIX] Firebase SDK 로드 대기 (Race Condition 방지)
-                    // fbCollection이나 fbAuth가 없으면 100ms 뒤에 init을 다시 시도합니다.
                     if (!window.fbCollection || !window.fbAuth) {
                         setTimeout(() => this.init(), 100);
                         return;
@@ -778,8 +783,6 @@
                     this.loadLanguage(); 
                     this.calculateSeasonLogic(); 
                     
-                    // [FIX] 중복 리스너 등록 방지
-                    // init이 재실행되더라도 리스너는 한 번만 등록합니다.
                     if (!window._objektRushInitDone) {
                         this.listenForAuth(); 
                         this.loadMemberData(); 
@@ -787,29 +790,27 @@
                         this.loadExtraHighScores(); 
                         this.setDynamicHeight(); 
                         window.addEventListener('resize', this.setDynamicHeight.bind(this)); 
+                        
                         this.initSounds(); 
+                        
                         this.$watch('gameState', (newState) => { 
                             this.switchBGM(newState);
                             if (newState === 'intermission') { this.initializeGravityVotes(); } 
                         }); 
-
                         this.switchBGM('start');
 
-                        // 탭 비활성화 시 BGM 일시정지
                         window.addEventListener('blur', () => {
-                            if (this.currentBGM) this.currentBGM.pause();
+                            if (currentAudioBgm) currentAudioBgm.pause();
                         });
                         
-                        // 탭 활성화 시 BGM 재개
                         window.addEventListener('focus', () => {
-                            if (this.currentBGM) {
-                                // [FIX] GAME_AUDIO_CONFIG.bgm 사용
+                            if (currentAudioBgm) {
                                 const bgmName = GAME_AUDIO_CONFIG.bgm[this.gameState];
                                 if (bgmName) {
                                     if (this.gameState === 'intermission' && this.lastStageGrade === 'F') {
                                         // Do nothing
                                     } else {
-                                        this.currentBGM.play().catch(() => {});
+                                        currentAudioBgm.play().catch(() => {});
                                     }
                                 }
                             }
@@ -819,38 +820,35 @@
                     }
                 },
 
-                // [NEW] 등급 계산 통합 함수 (점수 -> 등급 정보 반환)
                 calcGrade(averageScore) {
                     return GAME_GRADE_CRITERIA.find(c => averageScore >= c.min) || GAME_GRADE_CRITERIA[GAME_GRADE_CRITERIA.length - 1];
                 },
 
                 listenForAuth() {
                     if (!window.fbOnAuthStateChanged) {
-                        console.warn("Auth listener not ready, retrying in 200ms...");
                         setTimeout(() => this.listenForAuth(), 200);
                         return;
                     }
                     
                     window.fbOnAuthStateChanged(window.fbAuth, (user) => {
                         if (user) {
-                            // customUid가 설정되어 있지 않을 때만 auth uid를 사용
-                            if (!localStorage.getItem('objektRushCustomUid')) {
+                            // [REFACTOR] Use SAVE_KEY.UID
+                            if (!localStorage.getItem(SAVE_KEY.UID)) {
                                 this.currentUid = user.uid;
                             }
                             console.log("Auth State Changed, UID set:", user.uid);
-                            
                             this.loadUserProfile();
                             this.checkAndGrantSeasonBadge();
-
                         } else {
                             this.currentUid = 'ERROR';
                             this.isProfileLoading = false;
                             console.log("User is signed out.");
                         }
                     });
-                    // 수동 UID가 이미 있다면 즉시 반영
-                    if (localStorage.getItem('objektRushCustomUid')) {
-                        this.currentUid = localStorage.getItem('objektRushCustomUid');
+                    
+                    // [REFACTOR] Use SAVE_KEY.UID
+                    if (localStorage.getItem(SAVE_KEY.UID)) {
+                        this.currentUid = localStorage.getItem(SAVE_KEY.UID);
                         this.loadUserProfile();
                         this.checkAndGrantSeasonBadge();
                     }
@@ -1134,7 +1132,8 @@
                 },
 
                 loadLanguage() {
-                    const savedLang = localStorage.getItem('objektRushLanguage');
+                    // [REFACTOR] Use SAVE_KEY.LANG
+                    const savedLang = localStorage.getItem(SAVE_KEY.LANG);
                     const defaultLangCode = 'en';
                     
                     if (savedLang && this.supportedLangs.some(l => l.code === savedLang)) {
@@ -1175,20 +1174,23 @@
                     this.playSound('click');
                     this.currentLang = langCode;
                     this.loadTranslationData(langCode); 
-                    localStorage.setItem('objektRushLanguage', langCode);
+                    // [REFACTOR] Use SAVE_KEY.LANG
+                    localStorage.setItem(SAVE_KEY.LANG, langCode);
                 },
                 
                 loadSettings() {
-                    const savedBGMVolume = localStorage.getItem('objektRushBGMVolume');
-                    const savedSFXVolume = localStorage.getItem('objektRushSFXVolume');
+                    // [REFACTOR] Use SAVE_KEY.BGM, SAVE_KEY.SFX
+                    const savedBGMVolume = localStorage.getItem(SAVE_KEY.BGM);
+                    const savedSFXVolume = localStorage.getItem(SAVE_KEY.SFX);
 
                     if (savedBGMVolume !== null) this.bgmVolume = parseFloat(savedBGMVolume);
                     if (savedSFXVolume !== null) this.sfxVolume = parseFloat(savedSFXVolume);
                 },
 
                 saveSettings() {
-                    localStorage.setItem('objektRushBGMVolume', this.bgmVolume.toFixed(2));
-                    localStorage.setItem('objektRushSFXVolume', this.sfxVolume.toFixed(2));
+                    // [REFACTOR] Use SAVE_KEY.BGM, SAVE_KEY.SFX
+                    localStorage.setItem(SAVE_KEY.BGM, this.bgmVolume.toFixed(2));
+                    localStorage.setItem(SAVE_KEY.SFX, this.sfxVolume.toFixed(2));
                 },
                 
                 // --- User ID Management ---
@@ -1217,51 +1219,52 @@
                          return;
                     }
                     this.playSound('click');
-                    localStorage.setItem('objektRushCustomUid', this.inputUid);
+                    // [REFACTOR] Use SAVE_KEY.UID
+                    localStorage.setItem(SAVE_KEY.UID, this.inputUid);
                     this.showFeedback('ACCOUNT SWITCHED!', 'correct');
                     setTimeout(() => location.reload(), 1000);
                 },
 
                 resetUid() {
                     this.playSound('click');
-                    localStorage.removeItem('objektRushCustomUid');
+                    // [REFACTOR] Use SAVE_KEY.UID
+                    localStorage.removeItem(SAVE_KEY.UID);
                     this.showFeedback('RESET TO DEFAULT', 'correct');
                     setTimeout(() => location.reload(), 1000);
                 },
                 
                 switchBGM(newState) {
-                    if (this.currentBGM) {
-                        this.currentBGM.pause();
+                    // this.currentBGM -> currentAudioBgm (클로저 변수 사용)
+                    if (currentAudioBgm) {
+                        currentAudioBgm.pause();
                     }
                     
-                    // [FIX] GAME_AUDIO_CONFIG.bgm 직접 참조
                     const bgmName = GAME_AUDIO_CONFIG.bgm[newState];
 
                     if (newState === 'intermission' && this.lastStageGrade === 'F') {
-                        this.currentBGM = null;
+                        currentAudioBgm = null;
                         return;
                     }
                     
                     if (bgmName) {
-                        let audio = this.bgm[bgmName];
+                        let audio = audioBgm[bgmName];
                         if (!audio) {
-                            // [FIX] GAME_AUDIO_CONFIG.basePath 사용
                             audio = new Audio(`${GAME_AUDIO_CONFIG.basePath}${bgmName}`); 
                             audio.loop = true;
-                            this.bgm[bgmName] = audio;
+                            audioBgm[bgmName] = audio; 
                         }
-                        this.currentBGM = audio;
+                        currentAudioBgm = audio; 
                         audio.volume = this.bgmVolume;
                         audio.play().catch(() => {});
                     } else {
-                        this.currentBGM = null;
+                        currentAudioBgm = null;
                     }
                 },
                 
                 updateBGMVolume(event) {
                     this.bgmVolume = parseFloat(event.target.value);
-                    if (this.currentBGM) {
-                        this.currentBGM.volume = this.bgmVolume;
+                    if (currentAudioBgm) {
+                        currentAudioBgm.volume = this.bgmVolume;
                     }
                     this.saveSettings();
                 },
@@ -1272,31 +1275,21 @@
                     this.playSound('click'); 
                 },
 
+                // [OPTIMIZATION] Audio Logic Refactored (Using Closure Variables)
                 initSounds() {
-                    // [REFACTOR] GAME_AUDIO_CONFIG 상수 활용
                     GAME_AUDIO_CONFIG.sfx.forEach(s => {
-                        this.sounds[s] = new Audio(`${GAME_AUDIO_CONFIG.basePath}sfx_${s}.mp3`);
-                        this.sounds[s].volume = this.sfxVolume;
+                        audioSounds[s] = new Audio(`${GAME_AUDIO_CONFIG.basePath}sfx_${s}.mp3`);
+                        audioSounds[s].volume = this.sfxVolume;
                     });
 
                     this.$watch('sfxVolume', (newVolume) => {
-                        for (const key in this.sounds) {
-                            if (this.sounds[key] instanceof Audio) {
-                                this.sounds[key].volume = newVolume;
-                            }
+                        for (const key in audioSounds) {
+                            if (audioSounds[key]) audioSounds[key].volume = newVolume;
                         }
                     });
                 },
                 playSound(name) {
-                    let audio;
-                    const soundEntry = this.sounds[name];
-                    
-                    if (soundEntry instanceof Audio) {
-                        audio = soundEntry;
-                    } else {
-                        return;
-                    }
-
+                    const audio = audioSounds[name];
                     if (audio) {
                         audio.currentTime = 0; 
                         audio.play().catch(() => {}); 
@@ -1306,9 +1299,7 @@
                 loadMemberData() {
                     this.memberData = GAME_MEMBER_DATA;
                     this.dimensionData = GAME_DIMENSION_DATA;
-                    this.modhausData = GAME_MODHAUS_DATA;
-                    this.artmsData = GAME_ARTMS_DATA;
-                    this.friendData = GAME_FRIEND_DATA;
+                    // Other data arrays are accessed directly from GLOBAL CONSTANTS
                 },
 
                 async loadHighScores() {
@@ -2154,16 +2145,17 @@
                         if (member) { 
                             newCardData = member;
                         } else { 
-                            newCardData = this.modhausData.find(m => m.sNumber === 'X'); 
+                            // [REFACTOR] Use Global Constant directly
+                            newCardData = GAME_MODHAUS_DATA.find(m => m.sNumber === 'X'); 
                         }
 
-                        // [REFACTOR] Use GAME_BALANCE Constant (30%)
                         if (newCardData.type === 'fail_card' && this.amuletLevel > 0 && Math.random() < GAME_BALANCE.CHANCE_AMULET) {
-                            newCardData = this.artmsData[Math.floor(Math.random() * this.artmsData.length)]; 
+                            // [REFACTOR] Use Global Constant directly
+                            newCardData = GAME_ARTMS_DATA[Math.floor(Math.random() * GAME_ARTMS_DATA.length)]; 
                             this.showFeedback(this.translate('feedback_amulet_activated'), 'correct');
                         }
 
-                        this.clearSelectedData(true);
+                        this.clearSelectedData(true); 
                     } else if (this.selectedInventoryCard) {
                         newCardData = this.selectedInventoryCard;
                         if (!newCardData.isSpecial) { 
@@ -2328,9 +2320,9 @@
                     let originSNumber = member.sNumber; 
                     
                     if (!isSafeMode && this.stage > 1 && Math.random() < this.decoyRatio) { 
-                        // [REFACTOR] Use GAME_BALANCE Constant (40%)
                         if (this.assistLevel > 0 && Math.random() < GAME_BALANCE.CHANCE_ASSIST) { 
-                            const friend = this.friendData[Math.floor(Math.random() * this.friendData.length)];
+                            // [REFACTOR] Use Global Constant directly
+                            const friend = GAME_FRIEND_DATA[Math.floor(Math.random() * GAME_FRIEND_DATA.length)];
                             dataName = (type === 'kor') ? friend.kor : (friend.eng || friend.kor);
                             originSNumber = friend.sNumber; 
                         } else {
@@ -2394,31 +2386,45 @@
                 },
                 closeGachaModal() { this.playSound('click'); this.gameState = 'intermission'; },
                 startGachaAnimation() {
-                    // v10.197 FIX: ITEM_INFO.objekt.cost를 사용하여 가격 동기화
                     const cost = this.ITEM_INFO.objekt.cost;
-                    if (this.como < cost) { this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); return; }
+                    
+                    // 1. 비용 체크
+                    if (this.como < cost) { 
+                        this.showFeedback('NOT ENOUGH COMO!', 'incorrect'); 
+                        return; 
+                    }
+
+                    // [OPTIMIZATION] 인벤토리 체크를 최상단으로 이동 (돈 내기 전에 확인)
+                    if (this.inventory.length >= this.inventoryMaxSize) {
+                        this.showFeedback(this.translate('feedback_collect_full'), 'incorrect');
+                        this.closeGachaModal();
+                        return; // 돈이 빠져나가지 않고 바로 종료됨
+                    }
+
+                    // 2. 비용 지불 및 연출 시작
                     this.como -= cost;
                     this.playSound('gacha'); 
                     this.gachaState = 'opening';
                     
-                    setTimeout(() => {
-                        if (this.inventory.length >= this.inventoryMaxSize) {
-                             this.como += cost; 
-                             this.showFeedback(this.translate('feedback_collect_full'), 'incorrect');
-                             this.closeGachaModal();
-                             return;
-                        }
+                    // 3. 결과 결정 및 연출 (setTimeout 0 제거됨)
+                    // [REFACTOR] Use GAME_BALANCE Constant
+                    if (Math.random() < GAME_BALANCE.CHANCE_JOKER) { 
+                        // 조커 당첨
+                        this.gachaResultCard = { ...GAME_MODHAUS_DATA.find(m => m.sNumber === 'MH'), inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'joker_card' };
                         
-                        // [REFACTOR] Use GAME_BALANCE Constant (1%)
-                        if (Math.random() < GAME_BALANCE.CHANCE_JOKER) { 
-                            this.gachaResultCard = { ...this.modhausData.find(m => m.sNumber === 'MH'), inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'joker_card' };
-                             setTimeout(() => { this.gachaState = 'joker_flash'; setTimeout(() => { this.gachaState = 'result'; }, 1500); }, 2000);
-                        } else {
-                            const randomMember = this.memberData[Math.floor(Math.random() * this.memberData.length)];
-                            this.gachaResultCard = { ...randomMember, inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'member_card' };
-                            setTimeout(() => { this.gachaState = 'result'; }, 2000);
-                        }
-                    }, 0); 
+                        // 2초 흔들기 -> 조커 플래시 -> 1.5초 후 결과 공개
+                        setTimeout(() => { 
+                            this.gachaState = 'joker_flash'; 
+                            setTimeout(() => { this.gachaState = 'result'; }, 1500); 
+                        }, 2000);
+                    } else {
+                        // 일반 당첨
+                        const randomMember = this.memberData[Math.floor(Math.random() * this.memberData.length)];
+                        this.gachaResultCard = { ...randomMember, inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'member_card' };
+                        
+                        // 2초 흔들기 -> 바로 결과 공개
+                        setTimeout(() => { this.gachaState = 'result'; }, 2000);
+                    }
                 },
                 confirmGachaResult() {
                     // v10.197 FIX: ITEM_INFO.objekt.cost 사용
@@ -2471,7 +2477,10 @@
 
                     const newSpinGrid = [];
                     newSpinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: true, type: 'member_card' });
-                    for (let i = 0; i < 2; i++) newSpinGrid.push({ ...(this.modhausData.find(m => m.sNumber === 'X')), inventoryId: Date.now() + Math.random(), isSpecial: false });
+                    
+                    // [REFACTOR] Use Global Constant directly
+                    for (let i = 0; i < 2; i++) newSpinGrid.push({ ...(GAME_MODHAUS_DATA.find(m => m.sNumber === 'X')), inventoryId: Date.now() + Math.random(), isSpecial: false });
+                    
                     for (let i = 0; i < 13; i++) newSpinGrid.push({ ...this.memberData[Math.floor(Math.random() * this.memberData.length)], inventoryId: Date.now() + Math.random(), isSpecial: false, type: 'member_card' });
                     this.shuffleArray(newSpinGrid);
                     
