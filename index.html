@@ -20,7 +20,7 @@
             projectId: "dimension-link",
             storageBucket: "dimension-link.firebasestorage.app",
             messagingSenderId: "753751766984",
-            appId: "1:753751766984:web:808abfa8a593c161c5b2fd"
+            appId: "1:753751766984:web:a57df556e39d77c5c5b2fd" // [중요] 여기가 새로 발급된 앱 ID입니다!
         };
 
         // Initialize Firebase
@@ -166,19 +166,18 @@
             }
         }
 
-        .unlock-bounce {
-            animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        .scan-in {
+            animation: scan-enter 1.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
 
-        @keyframes bounce-in {
+        @keyframes scan-enter {
             0% {
-                transform: scale(0);
                 opacity: 0;
+                clip-path: inset(0 0 100% 0); 
             }
-
             100% {
-                transform: scale(1);
                 opacity: 1;
+                clip-path: inset(0 0 0 0); 
             }
         }
 
@@ -790,23 +789,27 @@
         const GAME_DEFAULT_BADGE = '👾';
 
         const GAME_SEASON_BADGE_TABLE = [
-            '🌊', '💎', '🍓', '🏆', '✨', '🚀', '🌙', '⭐', '❤️', '🍀', '🥦', '⚡️'
+            '🎄', '🐴', '🐰', '🌸', '🐱', '🍓', '⚽', '🌊', '🐹', '⭐', '🍁', '☃️',
+            '❄️', '🐏', '💎', '🌷', '🍀', '🦊', '🥦', '🍉', '🩷', '🍇', '🎃', '🎀',
+            '🦦', '🐵', '🦢', '🍰', '🦈', '🌹', '🏅', '🍦', '🌈', '🍒', '🎤', '🧸',
+            '🎁', '🐔', '👑', '🎉', '👗', '🦁', '🪸', '👒', '🍬', '⚾', '🔮', '☄️',
+            '🔔', '🐯', '🌭', '⚡', '💍', '🏍️', '🏸', '👙', '📱', '🐶', '🎲', '🚀'
         ];
 
         const GAME_BOSS_COMMENTS = {
-            S: ["boss_S_0", "boss_S_1", "boss_S_2"],
-            A: ["boss_A_0", "boss_A_1", "boss_A_2"],
-            B: ["boss_B_0", "boss_B_1", "boss_B_2"],
-            C: ["boss_C_0", "boss_C_1", "boss_C_2"],
-            F: ["boss_F_0", "boss_F_1", "boss_F_2"]
+            S: ["boss_S_0", "boss_S_1", "boss_S_2", "boss_S_3"],
+            A: ["boss_A_0", "boss_A_1", "boss_A_2", "boss_A_3"],
+            B: ["boss_B_0", "boss_B_1", "boss_B_2", "boss_B_3"],
+            C: ["boss_C_0", "boss_C_1", "boss_C_2", "boss_C_3"],
+            F: ["boss_F_0", "boss_F_1", "boss_F_2", "boss_F_3"]
         };
 
         const GAME_ENDING_MESSAGES = {
-            S: { title: "ending_S_title", desc: "ending_S_desc", theme: "text-yellow-300" },
-            A: { title: "ending_A_title", desc: "ending_A_desc", theme: "text-green-400" },
-            B: { title: "ending_B_title", desc: "ending_B_desc", theme: "text-blue-400" },
-            C: { title: "ending_C_title", desc: "ending_C_desc", theme: "text-gray-400" },
-            F: { title: "ending_F_title", desc: "ending_F_desc", theme: "text-red-400" }
+            S: { title: "PERFECT AGENT", desc: "You have achieved perfection in everything!\nYou are MH's S-Class Agent.", theme: "text-yellow-300" },
+            A: { title: "ELITE AGENT", desc: "Excellent results.\nYou are MH's Elite Agent.", theme: "text-green-400" },
+            B: { title: "GOOD AGENT", desc: "Mission completed safely.\nWe expect better results next time.", theme: "text-blue-400" },
+            C: { title: "AGENT", desc: "Mission completed.\n...However, the Boss seems unsatisfied.", theme: "text-gray-400" },
+            F: { title: "TERMINATED", desc: "Contract terminated due to failure to meet minimum required performance.", theme: "text-red-400" }
         };
 
         const GAME_STAGE_CONFIG = [
@@ -904,73 +907,87 @@
 
         const GAME_TRANSLATIONS_FALLBACK = {
             en: {
-                "lang_select": "Language Select",
-                "lang_desc": "Set the display language for in-game text.",
+                // [Intro Story - Enhanced Lore]
+                "intro_line_0": "Identity confirmed. Welcome to Modhaus, Agent.\nHere is your directive:",
+                "intro_line_1_a": "Materialize the target Objekt to stabilize the Dimension signal.",
+                "intro_line_1_b": "Analyze the Data Stream below and Input the correct sequence into the Slot.",
+                "intro_line_1_c": "Warning: The transmission window closes rapidly. Speed is essential.",
+                "intro_line_1_d": "Before deployment, memorize the confidential S-Class profiles on the next screen.",
+                "intro_line_prompt": "...Perfection is the minimum standard here. Initiate mission?",
 
-                "intro_line_0": "Welcome to MH, New Agent.\nYour mission is as follows:",
-                "intro_line_1_a": "Craft the correct Objekt corresponding to the Order and deliver it to the Client.",
-                "intro_line_1_b": "Match the Data pool items below accurately and Input them into the Slot.",
-                "intro_line_1_c": "Remember, all Order Blocks have a strict deadline.",
-                "intro_line_1_d": "Before deployment, you must fully understand the confidential data on the next page.",
-                "intro_line_prompt": "...I don't tolerate mistakes. Are you up to it?",
-
+                // [Item Descriptions]
                 "item_reload_desc": "Purchase additional RELOAD counts. Max capacity is +20 times.",
                 "item_timePlus_desc": "Improves transaction speed, securing an additional 2s block processing time.",
                 "item_scan_desc": "Restores the color hints of Birthday blocks by locating lost data.",
                 "item_amulet_desc": "Moon Goddess Amulet that rarely saves you from wrong data input.",
                 "item_assist_desc": "Incorrect data rarely changes into an easier format to identify.",
 
-                "boss_S_0": "You're quite capable. Only with this capability can you be my partner.",
-                "boss_S_1": "It was a perfect job. Not just anyone receives an S.",
-                "boss_S_2": "Hmm... I am satisfied with this. I trust you with the next one.",
-                "boss_A_0": "A... Not bad. But aim for S.",
-                "boss_A_1": "Excellent. But keep your guard up.",
-                "boss_A_2": "Well done. Don't forget this feeling.",
-                "boss_B_0": "B... You've passed average. Keep improving.",
-                "boss_B_1": "I still see shortcomings. Work harder.",
-                "boss_B_2": "Hey, New Agent. Show me a better performance tomorrow than today.",
-                "boss_C_0": "C? ...We have a meeting tomorrow.",
-                "boss_C_1": "...Is this your best?",
-                "boss_C_2": "New Agent. Show me a better performance tomorrow than today.",
-                "boss_F_0": "Contract expired. Security access revoked due to underperformance. Report immediately to Headquarters.",
-                "boss_F_1": "Warning: Mission failed. Next stage progress has been suspended by the system.",
-                "boss_F_2": "Contract terminated due to insufficient performance. No further mission assignment.",
+                // [Boss Comments] (Shadowy Boss Style & System Admin)
+                // Rank S: Perfect (은밀하고 완벽함 칭찬)
+                "boss_S_0": "Perfect execution. You are the ghost they fear.",
+                "boss_S_1": "Impeccable. No traces left behind.",
+                "boss_S_2": "Outstanding. The organization values your discretion.",
+                "boss_S_3": "Expect a generous reward. You've earned it.",
+                
+                // Rank A: Excellent (신뢰와 인정)
+                "boss_A_0": "Excellent work. You are proving your worth.",
+                "boss_A_1": "Clean and efficient. Just how I like it.",
+                "boss_A_2": "Mission accomplished. Stay ready for the next one.",
+                "boss_A_3": "Well done. You are becoming a vital asset.",
+                
+                // Rank B: Normal (평이함, 경각심)
+                "boss_B_0": "Acceptable. But do not get comfortable.",
+                "boss_B_1": "Job done, but room for improvement remains.",
+                "boss_B_2": "Standard performance. I expect growth.",
+                "boss_B_3": "You survived. That is what matters today.",
+                
+                // Rank C: Bad (경고, 실망)
+                "boss_C_0": "Barely satisfactory. You are walking on thin ice.",
+                "boss_C_1": "Sloppy. Do not mistake my patience for weakness.",
+                "boss_C_2": "Is this your best? I expected more.",
+                "boss_C_3": "You are lucky to still be on the payroll.",
+                
+                // Rank F: Fail (시스템/사무적 통보 - 건조하고 짧게)
+                "boss_F_0": "Contract terminated. Access denied.",
+                "boss_F_1": "Mission failed. Protocol Zero executed.",
+                "boss_F_2": "Critical error. Agent status: Disavowed.",
+                "boss_F_3": "Notice: Employment contract voided immediately.",
 
-                "ending_S_title": "PERFECT AGENT",
-                "ending_S_desc": "You have achieved perfection in everything!\nYou are MH's S-Class Agent.",
-                "ending_A_title": "ELITE AGENT",
-                "ending_A_desc": "Excellent results.\nYou are MH's Elite Agent.",
-                "ending_B_title": "GOOD AGENT",
-                "ending_B_desc": "Mission completed safely.\nWe expect better results next time.",
-                "ending_C_title": "AGENT",
-                "ending_C_desc": "Mission completed.\n...However, the Boss seems unsatisfied.",
-                "ending_F_title": "TERMINATED",
-                "ending_F_desc": "Contract terminated due to failure to meet minimum required performance.",
-
-                "gravity_desc_prefix": "Vote with COMO to decide",
+                // [Gravity Description]
+                // Prefix removed as per design change
                 "gravity_desc_stage": "Stage",
-                "gravity_desc_suffix": "which Dimension will perform!",
+                "gravity_desc_suffix": ": Decide the Dimension to perform!",
 
-                "feedback_collect_full": "COLLECT FULL!",
+                // [System Feedback - Description Only]
+                "feedback_collect_full": "COLLECT FULL!", 
                 "feedback_not_enough_como": "NOT ENOUGH COMO!",
-                "feedback_amulet_activated": "✨ AMULET ACTIVATED! ✨",
-                "feedback_joker_acquired": "✨ JOKER(MH) ACQUIRED! ✨",
-                "feedback_card_acquired": " Card Acquired!",
-                "feedback_grid_available": " GRID AVAILABLE!",
-                "feedback_grid_complete": "✨ GRID COMPLETE!",
-                "feedback_need_four_cards": "You need 4 or more identical common cards!",
-                "feedback_spin_failed": "SPIN FAILED... Card Lost!",
-                "feedback_reload_penalty": "Score Penalty",
+                "feedback_amulet_activated": "AMULET ACTIVATED!",
 
-                "confirm_return_title": "⚠️ WARNING",
+                // [Modal Descriptions]
                 "confirm_return_msg": "All current progress will be initialized.\nReturn to title?",
+                
+                "security_warning": "CAUTION: Do not share. Key required for account recovery.",
 
+                // [Disconnect Warning] (Style split)
+                "disconnect_warning_msg_1": "You are about to disconnect your Agent ID.",
+                "disconnect_warning_msg_2": "If you haven't backed up your ACCESS KEY, you will lose your account forever.",
+                "disconnect_warning_msg_3": "Are you sure?",
+
+                // [Reset Warning] (Combined)
+                "reset_warning_msg": "All saved data (Rankings, Items, Settings) will be permanently deleted. Continue?",
+
+                "suggestion_desc": "Bug reports, suggestions, or just a hello!\nMessages are sent anonymously.",
+                
+                "badge_select_desc": "Select a badge to represent you on the Rekord.",
+
+                "ranking_frozen_reason": "Rankings are frozen (25th ~ End of Month)",
+
+                // [In-Game Status]
                 "playing_next_block_boss": "WARNING: Detecting Dimension...",
                 "playing_next_block_normal": "Receiving next block..."
             }
         };
 
-        /* [수정된 오디오 설정] */
         const GAME_AUDIO_CONFIG = {
             basePath: 'assets/audio/',
             bgm: {
@@ -979,10 +996,7 @@
                 'ranking': 'bgm_title.mp3',
                 'settings': 'bgm_title.mp3',
                 'intermission': 'bgm_intermission.mp3',
-                
-                // [MODIFIED] playing -> standard로 변경 및 파일명 변경
                 'standard': 'bgm_standard.mp3', 
-                // [NEW] Overtime 전용 BGM 추가
                 'overtime': 'bgm_overtime.mp3', 
                 
                 'boss_playing': 'bgm_boss.mp3',
@@ -990,7 +1004,7 @@
                 'submitScore': 'bgm_intermission.mp3',
                 'ending': 'bgm_ending.mp3'
             },
-            sfx: ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear']
+            sfx: ['click', 'select', 'input', 'refresh', 'perfect', 'clear', 'fail', 'chain', 'warn', 'buy', 'gacha', 'data_select', 'stage_clear', 'report_open', 'countdown']
         };
 
         const GAME_BANNED_NAMES = ['SEX', 'ASS', 'FCK', 'FUK', 'KKK', 'NIG', 'GAY', 'TIT', 'CNT', 'ADM', 'SYS'];
@@ -1186,12 +1200,22 @@
                 currentLang: 'en',
                 supportedLangs: [
                     { code: 'en', name: 'English' },
+                    
+                    // [Asia]
                     { code: 'ko', name: '한국어 (Korean)' },
                     { code: 'ja', name: '日本語 (Japanese)' },
                     { code: 'zh-CN', name: '简体中文 (Simplified)' },
                     { code: 'zh-TW', name: '繁體中文 (Traditional)' },
                     { code: 'th', name: 'ภาษาไทย (Thai)' },
-                    { code: 'vi', name: 'Tiếng Việt (Vietnamese)' }
+                    { code: 'vi', name: 'Tiếng Việt (Vietnamese)' },
+                    { code: 'id', name: 'Bahasa Indonesia' },
+
+                    // [Europe / Others]
+                    { code: 'es', name: 'Español (Spanish)' },
+                    { code: 'de', name: 'Deutsch (German)' },
+                    { code: 'fr', name: 'Français (French)' },
+                    { code: 'it', name: 'Italiano (Italian)' },
+                    { code: 'pl', name: 'Polski (Polish)' }
                 ],
                 translations: {},
 
@@ -1970,9 +1994,16 @@
 
                     this.startCountdownSequence();
                 },
+                /* [수정된 카운트다운 로직: SFX 재생 지연 적용] */
                 startCountdownSequence() {
                     this.isStarting = true;
                     this.startCountdown = this.stage >= 11 ? 'OVERTIME' : `STAGE ${this.stage}`;
+                    
+                    // [MODIFIED] SFX 재생 타이밍 지연 (예: 0.3초 후 재생)
+                    setTimeout(() => {
+                        this.playSound('countdown');
+                    }, 700); // 이 숫자를 조절하세요 (0 = 즉시, 500 = 0.5초 후)
+
                     clearTimeout(this.startTimer);
                     this.startTimer = setTimeout(() => {
                         if (this.gameState !== 'playing') { clearTimeout(this.startTimer); return; }
@@ -2200,7 +2231,9 @@
 
                 // [NEW] Stage Report Modal 열기 함수 (간소화)
                 showStageReport(reportData) {
-                    this.playSound('stage_clear'); // Stage Clear 효과음 사용
+                    // [MODIFIED] stage_clear -> report_open 으로 변경
+                    this.playSound('report_open'); 
+                    
                     this.report = {
                         ...reportData,
                         show: true
@@ -2677,7 +2710,8 @@
 
                         if (newCardData.type === GAME_CARD_TYPES.FAIL && this.amuletLevel > 0 && Math.random() < GAME_BALANCE.CHANCE_AMULET) {
                             newCardData = GAME_ARTMS_DATA[Math.floor(Math.random() * GAME_ARTMS_DATA.length)];
-                            this.showFeedback(this.translate('feedback_amulet_activated'), 'correct');
+                            
+                            this.showFeedback(`🌙 ${this.translate('feedback_amulet_activated')}`, 'correct');
                         }
 
                         this.clearSelectedData(true);
@@ -2967,11 +3001,11 @@
                             return;
                         }
                         this.inventory.push(this.gachaResultCard);
+                        
                         if (this.gachaResultCard.type === GAME_CARD_TYPES.JOKER) {
-                            this.showFeedback(this.translate('feedback_joker_acquired'), 'correct');
+                            this.showFeedback('🃏 JOKER! 🃏', 'correct');
                         } else {
-                            this.showFeedback(`${this.gachaResultCard.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct');
-                            this.checkCraftingAvailability(this.gachaResultCard);
+                            this.showFeedback(`${this.gachaResultCard.sNumber} FCO!`, 'correct');
                         }
                     }
                     this.closeGachaModal();
@@ -3059,14 +3093,12 @@
                                 this.inventory.splice(index, 1, card);
 
                                 if (card.isSpecial) {
-                                    this.showFeedback(`✨ ${card.sNumber} SPECIAL! ✨`, 'correct');
+                                    this.showFeedback(`✨ ${card.sNumber} SCO! ✨`, 'correct');
                                 } else {
-                                    this.showFeedback(`${card.sNumber} ${this.translate('feedback_card_acquired')}`, 'correct');
-                                    this.checkCraftingAvailability(card);
+                                    this.showFeedback(`${card.sNumber} FCO!`, 'correct');
                                 }
                             } else {
                                 this.inventory.splice(index, 1);
-                                this.showFeedback(this.translate('feedback_spin_failed'), 'incorrect');
                             }
                         }
                     } catch (e) {
@@ -3138,7 +3170,8 @@
                             isSpecial: true
                         };
                         this.inventory.push(specialCard);
-                        this.showFeedback(`✨ ${specialCard.sNumber} ${this.translate('feedback_grid_complete')}`, 'correct');
+                        
+                        this.showFeedback(`🧩 ${specialCard.sNumber} GRID COMPLETE!`, 'correct');
 
                         setTimeout(() => {
                             this.isCrafting = false;
@@ -3146,9 +3179,7 @@
                         }, 500);
                     }, 2500);
                 },
-                checkCraftingAvailability(card) {
-                    if (card && this.inventory.filter(c => c.sNumber === card.sNumber && !c.isSpecial).length >= 4) this.showFeedback(`${card.sNumber} ${this.translate('feedback_grid_available')}`, 'correct');
-                },
+
                 getGravityVotes(poolKey) { return this.bossPools[poolKey] || []; },
 
                 initializeGravityVotes() {
@@ -3706,7 +3737,7 @@
                             x-text="(stage === 11) ? lastStageScore : totalScore"></p>
                     </div>
 
-                    <button @click="submitScore()" /* [MODIFIED] 이름이 없거나 3글자가 아니면 비활성화 */
+                    <button @click="submitScore()"
                         :disabled="currentSeason.state === 'frozen' || !playerName || playerName.length < 3"
                         class="glass-button w-full py-4 text-2xl font-bold rounded-2xl"
                         :class="(currentSeason.state === 'frozen' || !playerName || playerName.length < 3) ? 'opacity-50 cursor-not-allowed text-gray-500' : 'btn-green-glow text-green-400'">
@@ -3714,8 +3745,10 @@
                         <span
                             x-text="currentSeason.state === 'frozen' ? 'SEASON CLOSED' : (existingRecord ? 'UPDATE RECORD' : ((userProfile.lastActiveSeason === currentSeason.id && userProfile.seasonCodename) ? 'REGISTER RECORD' : 'REGISTER AGENT'))"></span>
                     </button>
-                    <p x-show="currentSeason.state === 'frozen'" class="text-red-400 mt-2 text-sm font-bold">Rankings
-                        are frozen (25th ~ End of Month)</p>
+                    <p x-show="currentSeason.state === 'frozen'" 
+                       class="text-red-400 mt-2 text-sm font-bold"
+                       x-text="translate('ranking_frozen_reason')">
+                    </p>
                 </div>
             </div>
 
@@ -3916,7 +3949,7 @@
                                     class="glass-button py-3 font-bold rounded-xl flex items-center justify-center gap-1"
                                     :class="canCraft() ? 'btn-green-glow text-teal-400' : 'opacity-50 text-teal-400/50'">
                                     <span>GRID</span>
-                                    <span class="text-xs font-mono" x-text="`(${getGridCount()}/${GAME_LIMITS.CRAFT_REQ})`"></span>
+                                    <span class="font-mono ml-1" x-text="`(${getGridCount()}/${GAME_LIMITS.CRAFT_REQ})`"></span>
                                 </button>
                             </div>
                         </template>
@@ -3924,13 +3957,15 @@
                     <template
                         x-if="stage >= 6 && stageConfig[Math.min(stage - 1, stageConfig.length - 1)].bosses.length > 0 && bossPools[stageConfig[Math.min(stage - 1, stageConfig.length - 1)].bosses[0]]">
                         <div id="gravity" class="glass-panel p-4 rounded-2xl relative">
-                            <h3 class="text-lg font-bold text-cyan-400 mb-2 tracking-wider">GRAVITY</h3>
+                            
+                            <h3 class="text-lg font-bold text-cyan-400 mb-2 tracking-wider"
+                                x-text="stage === 11 ? 'GRAND GRAVITY' : 'GRAVITY'">
+                            </h3>
+
                             <p class="text-sm text-gray-400 mb-3">
-                                <span x-show="stage === 11"
-                                    x-text="`[GLOBAL] ${translate('gravity_desc_stage')} ${stage} ${translate('gravity_desc_suffix')}`"></span>
-                                <span x-show="stage < 11"
-                                    x-text="`[LOCAL] ${translate('gravity_desc_stage')} ${stage} ${translate('gravity_desc_suffix')}`"></span>
+                                <span x-text="`${translate('gravity_desc_stage')} ${stage} ${translate('gravity_desc_suffix')}`"></span>
                             </p>
+
                             <div class="grid grid-cols-2 gap-2">
                                 <template
                                     x-for="bossName in getGravityVotes(stageConfig[Math.min(stage - 1, stageConfig.length - 1)].bosses[0])"
@@ -3946,6 +3981,7 @@
 
                                             <span class="text-gray-400 ml-1"
                                                 x-text="`(${getBossProbability(bossName, stageConfig[Math.min(stage - 1, stageConfig.length - 1)].bosses[0])}%)`"></span>
+                                        </span>
                                     </button>
                                 </template>
                             </div>
@@ -3975,7 +4011,8 @@
             <div x-show="report.show" x-transition
                 class="absolute inset-0 w-full h-full flex flex-col justify-center items-center bg-black/80 backdrop-blur-sm z-[60] p-6"
                 @click="closeStageReport()">
-                <div class="glass-panel p-6 rounded-3xl text-center border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.3)] unlock-bounce max-w-sm w-full"
+                
+                <div class="glass-panel p-6 rounded-3xl text-center border border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.3)] scan-in max-w-sm w-full"
                     @click.stop>
 
                     <h3 class="text-3xl font-black text-white mb-6 tracking-widest">
@@ -4100,13 +4137,8 @@
                 <div class="glass-panel p-6 rounded-3xl text-center border border-red-500/50 shadow-2xl max-w-sm w-full"
                     @click.stop>
                     <h3 class="text-2xl font-black text-red-400 mb-4">⚠️ DATA RESET WARNING</h3>
-                    <template x-if="resetConfirmModal.type === 'ranking'">
-                        <p class="text-lg text-gray-200 mb-8">All ranking data will be deleted. Continue?</p>
-                    </template>
-                    <template x-if="resetConfirmModal.type === 'all'">
-                        <p class="text-lg text-gray-200 mb-8">All saved data (Rankings, Items, Settings) will be
-                            permanently deleted. Continue?</p>
-                    </template>
+                    
+                    <p class="text-lg text-gray-200 mb-8" x-text="translate('reset_warning_msg')"></p>
 
                     <div class="grid grid-cols-2 gap-3">
                         <button @click="cancelReset()"
@@ -4126,9 +4158,9 @@
                     <h3 class="text-2xl font-black text-red-400 mb-4">⚠️ DISCONNECT WARNING</h3>
                     
                     <div class="text-gray-300 mb-8 space-y-2 text-sm">
-                        <p>You are about to disconnect your Agent ID.</p>
-                        <p class="text-red-300 font-bold">If you haven't backed up your ACCESS KEY, you will lose your account forever.</p>
-                        <p>Are you sure?</p>
+                        <p x-text="translate('disconnect_warning_msg_1')"></p>
+                        <p class="text-red-300 font-bold" x-text="translate('disconnect_warning_msg_2')"></p>
+                        <p x-text="translate('disconnect_warning_msg_3')"></p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3">
@@ -4523,7 +4555,7 @@
                             
                             <div class="flex justify-between border-b border-white/5 pb-2">
                                 <span>DEVELOPER</span>
-                                <span class="text-white">Kalsaver (2025)</span>
+                                <span class="text-white">SIGNAL (2025)</span>
                             </div>
 
                             <div class="flex justify-between border-b border-white/5 pb-2">
@@ -4547,7 +4579,7 @@
                                         <span class="text-white text-right truncate flex-1">TuneTrove - Cyberpunk</span>
                                     </div>
                                     <div class="flex justify-between items-center">
-                                        <span class="text-gray-500 font-bold w-24">BOSS</span>
+                                        <span class="text-gray-500 font-bold w-24">DIMENSION</span>
                                         <span class="text-white text-right truncate flex-1">Psychronic - Cyber Duel</span>
                                     </div>
                                     <div class="flex justify-between items-center">
@@ -4556,7 +4588,7 @@
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-gray-500 font-bold w-24">ENDING</span>
-                                        <span class="text-white text-right truncate flex-1">Jean Paul V - Atmosphere nuit calme (song 2)</span>
+                                        <span class="text-white text-right truncate flex-1">Jean Paul V - Atmosphere nuit calme</span>
                                     </div>
                                 </div>
                             </div>
@@ -4586,8 +4618,8 @@
                 @click="closeSuggestionModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
                     <h3 class="text-2xl font-bold text-yellow-300 mb-4">SEND SUGGESTION</h3>
-                    <p class="text-gray-400 text-sm mb-4">Bug reports, suggestions, or just a hello!<br>Messages are
-                        sent anonymously.</p>
+                    
+                    <p class="text-gray-400 text-sm mb-4 whitespace-pre-line" x-text="translate('suggestion_desc')"></p>
 
                     <textarea x-model="suggestionModal.message" placeholder="Type your message here..."
                         class="w-full h-32 bg-black/50 border border-white/20 rounded-xl p-3 text-white focus:outline-none focus:border-yellow-300 mb-4 resize-none"></textarea>
@@ -4611,7 +4643,8 @@
                 @click="closeBadgeModal()">
                 <div class="glass-panel p-6 rounded-3xl w-full max-w-md" @click.stop>
                     <h3 class="text-2xl font-bold text-cyan-300 mb-4">SELECT AGENT BADGE</h3>
-                    <p class="text-gray-400 text-sm mb-6">Select a badge to represent you on the Rekord.</p>
+                    
+                    <p class="text-gray-400 text-sm mb-6" x-text="translate('badge_select_desc')"></p>
 
                     <div x-show="isProfileLoading" class="text-center text-gray-400">Loading Badges...</div>
 
@@ -4680,8 +4713,8 @@
                             </button>
                         </div>
 
-                        <p class="text-[9px] text-red-400/80 mt-2 ml-1 leading-tight font-medium">
-                            CAUTION: Do not share. Key required for account recovery.
+                        <p class="text-[9px] text-red-400/80 mt-2 ml-1 leading-tight font-medium"
+                           x-text="translate('security_warning')">
                         </p>
                     </div>
 
@@ -4991,12 +5024,12 @@
                 x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
                 x-transition:leave="transition ease-in"
                 x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4"
-                class="absolute top-12 left-1/2 -translate-x-1/2 w-auto px-6 py-3 rounded-full shadow-2xl text-lg font-black z-[80] whitespace-nowrap backdrop-blur-md border-2 flex items-center justify-center"
+                class="absolute top-12 left-1/2 -translate-x-1/2 w-auto px-6 py-1 rounded-full shadow-2xl text-lg font-black z-[80] whitespace-nowrap backdrop-blur-md border-2 flex items-center justify-center"
                 :class="{
-                    'bg-green-500/90 text-white border-green-400': feedback.type === 'correct', 
-                    'bg-red-500/90 text-white border-red-400': feedback.type === 'incorrect',
-                    'bg-purple-600/90 text-yellow-300 border-purple-400': feedback.type === 'system'
-                 }">
+                    'bg-cyan-400/50 text-white border-gray-400': feedback.type === 'correct', 
+                    'bg-red-400/50 text-white border-gray-400': feedback.type === 'incorrect',
+                    'bg-purple-400/50 text-white border-gray-400': feedback.type === 'system'
+                }">
                 <span x-text="feedback.message"></span>
             </div>
 
