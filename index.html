@@ -166,30 +166,34 @@
             }
         }
 
-        /* [수정됨] 스캔라인 효과 강화 (가시성 UP) */
+        /* [수정됨] 움직이는 스캔라인 (가독성 보호 + 생동감) */
         .scanline-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
             
-            /* [변경] 줄무늬 색상 강화: 0.1 -> 0.5 (훨씬 진해짐) */
+            /* [변경] 색상을 다시 연하게 조정 (컨텐츠 가독성 확보) */
             background: linear-gradient(
                 to bottom,
                 rgba(255, 255, 255, 0),
-                rgba(255, 255, 255, 0) 30%,
-                rgba(0, 0, 0, 0.5) 30%,
-                rgba(0, 0, 0, 0.5)
+                rgba(255, 255, 255, 0) 50%,
+                rgba(0, 0, 0, 0.2) 50%, /* 0.5 -> 0.2 로 완화 */
+                rgba(0, 0, 0, 0.2)
             );
             
-            /* [변경] 줄 간격 축소: 4px -> 3px (더 촘촘한 모니터 픽셀 느낌) */
-            background-size: 100% 3px;
-            
+            background-size: 100% 4px;
             z-index: 10;
-            pointer-events: none; /* 클릭 통과 필수 */
-            
-            /* [변경] 전체 투명도 증가: 0.6 -> 0.8 */
-            opacity: 0.5;
-            
+            pointer-events: none;
+            opacity: 0.6;
             border-radius: 1rem;
+            
+            /* [핵심] 스캔라인이 천천히 흐르도록 애니메이션 추가 */
+            animation: scanline-scroll 1s linear infinite;
+        }
+
+        /* 흐름 효과 애니메이션 정의 */
+        @keyframes scanline-scroll {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 4px; } /* 패턴 크기만큼 이동 */
         }
 
         .scan-in {
@@ -2904,8 +2908,8 @@
                         });
                     }, 30);
                 },
-                shuffleArray(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[array[i], array[j]] = [array[j], array[i]]; } }
-                ,
+                shuffleArray(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[array[i], array[j]] = [array[j], array[i]]; } },
+                
                 refillData(isSafeMode = false) {
                     this.isDataReady = false;
 
@@ -2965,6 +2969,26 @@
                     let id = Date.now() + Math.random();
 
                     return { id: id, name: dataName, type: type, originSNumber: originSNumber };
+                },
+                // [NEW] 인벤토리 정렬 함수: 스페셜 우선 -> 번호 오름차순
+                sortInventory() {
+                    this.inventory.sort((a, b) => {
+                        // 1. 스페셜 카드 우선 정렬 (True가 앞으로)
+                        if (a.isSpecial && !b.isSpecial) return -1;
+                        if (!a.isSpecial && b.isSpecial) return 1;
+
+                        // 2. S넘버 숫자 기준 오름차순 정렬 (S1 -> S2 ... -> S24)
+                        // 'S'를 떼고 숫자로 변환하여 비교
+                        const numA = parseInt(a.sNumber.replace(/\D/g, '')) || 0; // 숫자만 추출
+                        const numB = parseInt(b.sNumber.replace(/\D/g, '')) || 0;
+                        
+                        if (numA !== numB) {
+                            return numA - numB;
+                        }
+                        
+                        // 3. (선택) 완전히 똑같다면 획득 순서(ID) 유지
+                        return a.inventoryId - b.inventoryId;
+                    });
                 },
                 inputEnabled() { return this.selectedData !== null || this.selectedInventoryCard !== null; },
                 isSelectedData(id) { return this.selectedData?.id === id; },
@@ -3068,6 +3092,7 @@
                             return;
                         }
                         this.inventory.push(this.gachaResultCard);
+                        this.sortInventory();
                         
                         if (this.gachaResultCard.type === GAME_CARD_TYPES.JOKER) {
                             this.showFeedback('🃏 JOKER! 🃏', 'correct');
@@ -3158,6 +3183,7 @@
                         if (index > -1) {
                             if (card.type !== GAME_CARD_TYPES.FAIL) {
                                 this.inventory.splice(index, 1, card);
+                                this.sortInventory();
 
                                 if (card.isSpecial) {
                                     this.showFeedback(`✨ ${card.sNumber} SCO! ✨`, 'correct');
@@ -3190,7 +3216,6 @@
                 cancelSpin() {
                     this.playSound('click');
                     this.intermissionSpinCount--;
-                    // [삭제됨] this.showFeedback('SPIN CANCELED', 'system');
 
                     this.isSpinning = false;
                     setTimeout(() => {
@@ -3204,7 +3229,7 @@
                     if (!this.selectedInventoryCard || this.selectedInventoryCard.isSpecial) return false;
                     return this.inventory.filter(c => c.sNumber === this.selectedInventoryCard.sNumber && !c.isSpecial).length >= GAME_LIMITS.CRAFT_REQ;
                 },
-                // [NEW] GRID 버튼 표시용 카운트 계산
+
                 getGridCount() {
                     // 선택된 카드가 없거나, 스페셜 카드라면 0 반환 (무시)
                     if (!this.selectedInventoryCard || this.selectedInventoryCard.isSpecial) return 0;
@@ -3215,8 +3240,6 @@
                 startGridCraft() {
                     if (this.isSpinning) return;
                     if (!this.canCraft()) {
-                        // [삭제됨] this.showFeedback(...) 경고 메시지 삭제
-                        // 버튼이 비활성화되겠지만, 혹시 모를 호출을 대비해 return만 유지
                         return;
                     }
                     this.playSound('gacha');
@@ -3237,6 +3260,7 @@
                             isSpecial: true
                         };
                         this.inventory.push(specialCard);
+                        this.sortInventory();
                         
                         this.showFeedback(`🧩 ${specialCard.sNumber} GRID COMPLETE!`, 'correct');
 
